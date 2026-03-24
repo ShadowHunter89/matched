@@ -15,6 +15,7 @@ const NewOpportunity = React.lazy(() => import('@/pages/NewOpportunity'))
 const ProfilePage = React.lazy(() => import('@/pages/Profile'))
 const Analytics = React.lazy(() => import('@/pages/Analytics'))
 const Seed = React.lazy(() => import('@/pages/admin/Seed'))
+const AdminDiagnostics = React.lazy(() => import('@/pages/AdminDiagnostics'))
 
 // ─── Loading fallback ────────────────────────────────────────────────────────
 
@@ -224,6 +225,7 @@ export default function App() {
 
         {/* Admin */}
         <Route path="/admin/seed" element={<Seed />} />
+        <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
 
         {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />

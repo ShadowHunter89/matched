@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ function ts(): string {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function Seed() {
+  const navigate = useNavigate()
   const [seeding, setSeeding] = useState(false)
   const [log, setLog] = useState<LogLine[]>([])
   const [done, setDone] = useState(false)
@@ -64,20 +66,17 @@ export default function Seed() {
         appendLog({ type: 'info', text: 'No results returned from function.', ts: ts() })
       }
 
-      for (const result of results) {
-        if (result.error) {
-          appendLog({
-            type: 'error',
-            text: `✗ ${result.email} — ${result.error}`,
-            ts: ts(),
-          })
-        } else {
-          appendLog({
-            type: 'success',
-            text: `✓ ${result.email} — ${result.status} (${result.userId?.slice(0, 8)}...)`,
-            ts: ts(),
-          })
-        }
+      const newLogs = results.map((r: any) =>
+        r.error
+          ? `❌ ${r.email}: ${r.error}`
+          : `${r.embeddingStored ? '✅' : '⚠️'} ${r.email}${r.embeddingStored ? ' + embedded' : ' — NO EMBEDDING'}`
+      )
+      for (const logText of newLogs) {
+        appendLog({
+          type: logText.startsWith('❌') ? 'error' : logText.startsWith('✅') ? 'success' : 'info',
+          text: logText,
+          ts: ts(),
+        })
       }
 
       const successCount = results.filter((r) => !r.error).length
@@ -231,9 +230,27 @@ export default function Seed() {
         )}
 
         {done && (
-          <p style={{ fontSize: 13, color: '#555', marginTop: 12 }}>
-            Seed complete. You can close this page.
-          </p>
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 13, color: '#555', marginBottom: 12 }}>
+              Seed complete.
+            </p>
+            <button
+              onClick={() => navigate('/admin/diagnostics')}
+              style={{
+                background: 'transparent',
+                color: '#E8FF47',
+                border: '1px solid rgba(232,255,71,0.3)',
+                borderRadius: 100,
+                padding: '10px 20px',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              → Run diagnostics
+            </button>
+          </div>
         )}
       </div>
 

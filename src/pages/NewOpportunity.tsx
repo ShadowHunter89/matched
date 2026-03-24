@@ -129,7 +129,6 @@ export default function NewOpportunity() {
 
     try {
       const payload: Record<string, unknown> = {
-        client_id: user.id,
         title: form.title.trim(),
         description: form.description.trim() || null,
         required_skills: form.skills,
@@ -142,27 +141,32 @@ export default function NewOpportunity() {
       if (form.durationWeeks) payload.duration_weeks = parseInt(form.durationWeeks)
       if (form.timezoneRequirements) payload.timezone_requirements = form.timezoneRequirements.trim()
 
-      const { data: newOpp, error } = await supabase
+      console.log("Posting opportunity, client_id:", user.id)
+      const { data: opp, error } = await supabase
         .from('opportunities')
-        .insert(payload)
+        .insert({ client_id: user.id, ...payload })
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error("Insert failed:", error)
+        throw error
+      }
+      console.log("Created opportunity:", opp.id)
 
       setSubmitting(false)
       setMatching(true)
 
-      // Run matching (don't block navigation if it takes too long)
-      const matchingTimeout = new Promise((resolve) => setTimeout(resolve, 10000))
-      const matchingCall = supabase.functions.invoke('match-professionals', {
-        body: { opportunityId: newOpp.id },
-      })
-
-      await Promise.race([matchingCall, matchingTimeout])
+      const { data: matchResult, error: matchError } = await supabase
+        .functions.invoke('match-professionals', {
+          body: { opportunityId: opp.id },
+        })
+      console.log("Match result:", matchResult, matchError)
 
       setMatching(false)
-      setToast('Opportunity posted! We\'re finding your matches.')
+      setToast(matchError
+        ? 'Opportunity posted! Processing matches...'
+        : `Opportunity posted! Found ${matchResult?.matchesFound || 0} matches via ${matchResult?.method}`)
 
       setTimeout(() => {
         navigate('/dashboard/client')

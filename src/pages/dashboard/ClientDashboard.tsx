@@ -84,6 +84,7 @@ export default function ClientDashboard() {
   const [paymentMatch, setPaymentMatch] = useState<MatchWithProfessional | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [profCount, setProfCount] = useState(0)
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -135,6 +136,57 @@ export default function ClientDashboard() {
 
     setLoadingOpps(false)
   }, [user])
+
+  // ── fetchData: unified refresh
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    setLoadingOpps(true);
+    console.log("Fetching for client:", user.id);
+    const { data: opps, error } = await supabase
+      .from("opportunities")
+      .select("*")
+      .eq("client_id", user.id)
+      .order("created_at", { ascending: false });
+    console.log("Opps:", opps?.length, error?.message);
+    if (opps && opps.length > 0) {
+      const oppIds = opps.map(o => o.id);
+      const { data: allMatches } = await supabase
+        .from("matches")
+        .select(`
+          *,
+          profiles:professional_id (full_name),
+          professional_profiles:professional_id (
+            headline, skills, hourly_rate_min,
+            hourly_rate_max, availability_hours
+          )
+        `)
+        .in("opportunity_id", oppIds)
+        .order("similarity_score", { ascending: false });
+      const m = allMatches || [];
+      const withCounts: OpportunityWithCounts[] = opps.map(o => ({
+        ...o,
+        matchCount: m.filter(x => x.opportunity_id === o.id).length,
+      }));
+      setOpportunities(withCounts);
+      setStats({
+        opportunities: opps.length,
+        matched: m.length,
+        interested: m.filter(x => x.status === "accepted").length,
+        connected: m.filter(x => x.status === "connected").length,
+      });
+      if (selected) {
+        setMatches((m.filter(x => x.opportunity_id === selected.id) as MatchWithProfessional[]));
+      }
+    } else {
+      setOpportunities((opps || []).map(o => ({ ...o, matchCount: 0 })));
+      setStats({ opportunities: 0, matched: 0, interested: 0, connected: 0 });
+    }
+    const { count } = await supabase
+      .from("professional_profiles")
+      .select("*", { count: "exact", head: true });
+    setProfCount(count || 0);
+    setLoadingOpps(false);
+  }, [user, selected])
 
   // ── Fetch matches for selected opportunity
   const fetchMatches = useCallback(async (opportunityId: string) => {

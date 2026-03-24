@@ -150,9 +150,21 @@ serve(async (req) => {
           },
           body: JSON.stringify({ userId }),
         });
-        results.push({ email: prof.email, status: "created", userId, embedded: true });
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const { data: embCheck } = await supabase
+          .from("professional_profiles")
+          .select("embedding")
+          .eq("user_id", userId)
+          .single();
+        const embeddingStored = embCheck?.embedding !== null;
+        results.push({
+          email: prof.email,
+          status: "created",
+          userId,
+          embeddingStored
+        });
       } catch (embedErr) {
-        results.push({ email: prof.email, status: "created", userId, embedded: false, embedError: String(embedErr) });
+        results.push({ email: prof.email, status: "created", userId, embeddingStored: false, embedError: String(embedErr) });
       }
     } catch (e: any) {
       results.push({ email: prof.email, error: e.message });
