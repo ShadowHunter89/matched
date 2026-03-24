@@ -191,13 +191,36 @@ export default function ClientDashboard() {
   // ── Fetch matches for selected opportunity
   const fetchMatches = useCallback(async (opportunityId: string) => {
     setLoadingMatches(true)
-    const { data } = await supabase
+
+    const { data: matchData } = await supabase
       .from('matches')
-      .select('*, professional_profiles(*), profiles(full_name)')
+      .select('*')
       .eq('opportunity_id', opportunityId)
       .order('similarity_score', { ascending: false })
 
-    setMatches((data as MatchWithProfessional[]) || [])
+    if (!matchData || matchData.length === 0) {
+      setMatches([])
+      setLoadingMatches(false)
+      return
+    }
+
+    const profIds = matchData.map((m) => m.professional_id)
+
+    const [{ data: profData }, { data: profileData }] = await Promise.all([
+      supabase.from('professional_profiles').select('*').in('user_id', profIds),
+      supabase.from('profiles').select('user_id, full_name').in('user_id', profIds),
+    ])
+
+    const profMap = Object.fromEntries((profData || []).map((p) => [p.user_id, p]))
+    const profileMap = Object.fromEntries((profileData || []).map((p) => [p.user_id, p]))
+
+    const combined = matchData.map((m) => ({
+      ...m,
+      professional_profiles: profMap[m.professional_id] || null,
+      profiles: profileMap[m.professional_id] || null,
+    }))
+
+    setMatches(combined as MatchWithProfessional[])
     setLoadingMatches(false)
   }, [])
 
