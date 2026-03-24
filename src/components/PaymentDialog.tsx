@@ -48,7 +48,12 @@ export default function PaymentDialog({
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: { matchId },
         })
-        if (error) throw new Error(error.message)
+        // Supabase SDK wraps the real error — extract it from the response body first
+        if (error) {
+          const actualMessage = data?.error || error.message
+          throw new Error(actualMessage)
+        }
+        if (data?.error) throw new Error(data.error)
         if (!data?.clientSecret) throw new Error('No client secret returned')
         setClientSecret(data.clientSecret)
       } catch (err: any) {
