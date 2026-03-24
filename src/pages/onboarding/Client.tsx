@@ -97,7 +97,7 @@ export default function ClientOnboarding() {
             company_name: companyName.trim(),
             company_size: companySize,
             industry,
-            about: about.trim() || null,
+            bio: about.trim() || null,
           },
           { onConflict: 'user_id' }
         )
