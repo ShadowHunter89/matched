@@ -14,3 +14,13 @@ export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder-anon-key'
 )
+
+export async function queryWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = 8000
+): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Query timed out')), timeoutMs)
+  )
+  return Promise.race([promise, timeout])
+}

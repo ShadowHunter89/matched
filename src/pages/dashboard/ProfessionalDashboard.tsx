@@ -149,34 +149,62 @@ export default function ProfessionalDashboard() {
 
   // ── Fetch matches
   const fetchMatches = useCallback(async () => {
-    if (!user) return
-    const { data, error } = await supabase
-      .from('matches')
-      .select('*, opportunities(*)')
-      .eq('professional_id', user.id)
-      .order('created_at', { ascending: false })
+    if (!user?.id) return
+    setLoading(true)
+    try {
+      // Step 1: get matches
+      const { data: matchRows, error: matchErr } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('professional_id', user.id)
+        .order('created_at', { ascending: false })
 
-    if (!error && data) {
-      setMatches(data as MatchWithOpportunity[])
+      if (matchErr) throw matchErr
+
+      if (!matchRows || matchRows.length === 0) {
+        setMatches([])
+        return
+      }
+
+      // Step 2: get opportunities separately (no FK join)
+      const oppIds = matchRows.map((m) => m.opportunity_id)
+      const { data: opps } = await supabase
+        .from('opportunities')
+        .select('*')
+        .in('id', oppIds)
+
+      const oppMap: Record<string, Opportunity> = {}
+      for (const o of opps || []) oppMap[o.id] = o
+
+      // Step 3: combine
+      setMatches(matchRows.map((m) => ({ ...m, opportunities: oppMap[m.opportunity_id] || null })) as MatchWithOpportunity[])
+    } catch (err: unknown) {
+      console.error('fetchMatches error:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [user])
+  }, [user?.id])
 
   // ── On mount
   useEffect(() => {
+    if (!user?.id) return
+    const timeout = setTimeout(() => {
+      setLoading(false)
+    }, 10000)
     fetchProfProfile().then(async (prof) => {
       if (prof && !prof.embedding) {
         supabase.functions.invoke('embed-professional', { body: { userId: user?.id } }).catch(() => {})
       }
     })
-    fetchMatches()
-  }, [fetchProfProfile, fetchMatches, user])
+    fetchMatches().finally(() => clearTimeout(timeout))
+    return () => clearTimeout(timeout)
+  }, [user?.id])
 
   // ── Realtime subscription
   useEffect(() => {
-    if (!user) return
+    if (!user?.id) return
     const channel = supabase
-      .channel('matches-pro')
+      .channel(`prof-matches-${user.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'matches', filter: `professional_id=eq.${user.id}` },
@@ -189,7 +217,7 @@ export default function ProfessionalDashboard() {
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [user, fetchMatches])
+  }, [user?.id])
 
   // ── Sorted + filtered matches
   const activeMatches = matches

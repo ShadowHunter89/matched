@@ -94,6 +94,7 @@ export default function ClientDashboard() {
   const [stats, setStats] = useState<StatsData>({ opportunities: 0, matched: 0, interested: 0, connected: 0 })
   const [paymentMatch, setPaymentMatch] = useState<MatchWithProfessional | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didAutoSelect = useRef(false)
 
@@ -103,104 +104,162 @@ export default function ClientDashboard() {
     toastTimer.current = setTimeout(() => setToast(null), 3500)
   }, [])
 
+  // ── Handle selectedOppId from router state (e.g. after posting new opportunity)
+  useEffect(() => {
+    const state = location.state as { selectedOppId?: string } | null
+    if (state?.selectedOppId && !didAutoSelect.current) {
+      didAutoSelect.current = true
+      const target = opportunities.find((o) => o.id === state.selectedOppId)
+      if (target) setSelected(target)
+      window.history.replaceState({}, document.title)
+    }
+  }, [location.state, opportunities])
+
   // ── Fetch opportunities
   const fetchOpportunities = useCallback(async () => {
-    if (!user) return
+    if (!user?.id) return
     setLoadingOpps(true)
+    setError(null)
 
-    const { data: opps } = await supabase
-      .from('opportunities')
-      .select('*')
-      .eq('client_id', user.id)
-      .order('created_at', { ascending: false })
+    try {
+      const { data: opps, error: oppsErr } = await supabase
+        .from('opportunities')
+        .select('*')
+        .eq('client_id', user.id)
+        .order('created_at', { ascending: false })
 
-    if (!opps) { setLoadingOpps(false); return }
+      if (oppsErr) throw oppsErr
 
-    // Fetch match counts and all match statuses for stats
-    const { data: allMatches } = await supabase
-      .from('matches')
-      .select('opportunity_id, status')
-      .in('opportunity_id', opps.map((o) => o.id))
+      if (!opps || opps.length === 0) {
+        setOpportunities([])
+        setLoadingOpps(false)
+        return
+      }
 
-    const countMap: Record<string, number> = {}
-    ;(allMatches || []).forEach((m) => {
-      countMap[m.opportunity_id] = (countMap[m.opportunity_id] || 0) + 1
-    })
+      // Fetch match counts and all match statuses for stats
+      const { data: allMatches } = await supabase
+        .from('matches')
+        .select('opportunity_id, status')
+        .in('opportunity_id', opps.map((o) => o.id))
 
-    const withCounts: OpportunityWithCounts[] = opps.map((o) => ({
-      ...o,
-      matchCount: countMap[o.id] || 0,
-    }))
+      const countMap: Record<string, number> = {}
+      ;(allMatches || []).forEach((m) => {
+        countMap[m.opportunity_id] = (countMap[m.opportunity_id] || 0) + 1
+      })
 
-    setOpportunities(withCounts)
+      const withCounts: OpportunityWithCounts[] = opps.map((o) => ({
+        ...o,
+        matchCount: countMap[o.id] || 0,
+      }))
 
-    // Compute stats
-    const totalMatched = (allMatches || []).length
-    const interested = (allMatches || []).filter((m) => m.status === 'accepted').length
-    const connected = (allMatches || []).filter((m) => m.status === 'connected').length
-    setStats({
-      opportunities: opps.length,
-      matched: totalMatched,
-      interested,
-      connected,
-    })
+      setOpportunities(withCounts)
 
-    // Auto-select from router state (e.g. after posting new opportunity)
-    const selectedOppId = (location.state as { selectedOppId?: string } | null)?.selectedOppId
-    if (selectedOppId && !didAutoSelect.current) {
-      didAutoSelect.current = true
-      const target = withCounts.find((o) => o.id === selectedOppId)
-      if (target) setSelected(target)
+      // Auto-select first if nothing selected yet
+      if (withCounts.length > 0 && !selected) {
+        // Check router state for a specific opp to select
+        const state = location.state as { selectedOppId?: string } | null
+        if (state?.selectedOppId && !didAutoSelect.current) {
+          didAutoSelect.current = true
+          const target = withCounts.find((o) => o.id === state.selectedOppId)
+          if (target) {
+            setSelected(target)
+            window.history.replaceState({}, document.title)
+          } else {
+            setSelected(withCounts[0])
+          }
+        } else if (!didAutoSelect.current) {
+          setSelected((prev) => prev || withCounts[0])
+        }
+      }
+
+      // Compute stats
+      const totalMatched = (allMatches || []).length
+      const interested = (allMatches || []).filter((m) => m.status === 'accepted').length
+      const connected = (allMatches || []).filter((m) => m.status === 'connected').length
+      setStats({
+        opportunities: opps.length,
+        matched: totalMatched,
+        interested,
+        connected,
+      })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to load opportunities'
+      setError(msg)
+    } finally {
+      setLoadingOpps(false)
     }
-
-    setLoadingOpps(false)
-  }, [user, location.state])
+  }, [user?.id])
 
   // ── Fetch matches for selected opportunity
   const fetchMatches = useCallback(async (opportunityId: string) => {
+    if (!opportunityId) return
     setLoadingMatches(true)
 
-    const { data: matchData } = await supabase
-      .from('matches')
-      .select('*')
-      .eq('opportunity_id', opportunityId)
-      .order('similarity_score', { ascending: false })
+    try {
+      const { data: matchData, error: matchErr } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('opportunity_id', opportunityId)
+        .order('similarity_score', { ascending: false })
 
-    if (!matchData || matchData.length === 0) {
+      if (matchErr) throw matchErr
+
+      if (!matchData || matchData.length === 0) {
+        setMatches([])
+        return
+      }
+
+      const profIds = matchData.map((m) => m.professional_id)
+
+      const [{ data: profData }, { data: profileData }] = await Promise.all([
+        supabase.from('professional_profiles').select('*').in('user_id', profIds),
+        supabase.from('profiles').select('user_id, full_name').in('user_id', profIds),
+      ])
+
+      const profMap = Object.fromEntries((profData || []).map((p) => [p.user_id, p]))
+      const profileMap = Object.fromEntries((profileData || []).map((p) => [p.user_id, p]))
+
+      const combined = matchData.map((m) => ({
+        ...m,
+        professional_profiles: profMap[m.professional_id] || null,
+        profiles: profileMap[m.professional_id] || null,
+      }))
+
+      setMatches(combined as MatchWithProfessional[])
+    } catch (err: unknown) {
+      console.error('fetchMatches error:', err)
       setMatches([])
+    } finally {
       setLoadingMatches(false)
-      return
     }
-
-    const profIds = matchData.map((m) => m.professional_id)
-
-    const [{ data: profData }, { data: profileData }] = await Promise.all([
-      supabase.from('professional_profiles').select('*').in('user_id', profIds),
-      supabase.from('profiles').select('user_id, full_name').in('user_id', profIds),
-    ])
-
-    const profMap = Object.fromEntries((profData || []).map((p) => [p.user_id, p]))
-    const profileMap = Object.fromEntries((profileData || []).map((p) => [p.user_id, p]))
-
-    const combined = matchData.map((m) => ({
-      ...m,
-      professional_profiles: profMap[m.professional_id] || null,
-      profiles: profileMap[m.professional_id] || null,
-    }))
-
-    setMatches(combined as MatchWithProfessional[])
-    setLoadingMatches(false)
   }, [])
 
   useEffect(() => {
-    fetchOpportunities()
-  }, [fetchOpportunities])
+    if (user?.id) fetchOpportunities()
+  }, [user?.id])
 
   useEffect(() => {
     if (selected) {
       fetchMatches(selected.id)
     }
-  }, [selected, fetchMatches])
+  }, [selected?.id])
+
+  // ── Realtime subscription
+  useEffect(() => {
+    if (!user?.id || !selected?.id) return
+    const channel = supabase
+      .channel(`client-matches-${selected.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'matches',
+        filter: `opportunity_id=eq.${selected.id}`
+      }, () => {
+        fetchMatches(selected.id)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [user?.id, selected?.id])
 
   const handlePaymentSuccess = (email: string) => {
     showToast(`Connected! Email: ${email}`)

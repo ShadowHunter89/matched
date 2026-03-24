@@ -3,53 +3,77 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 
 export function useAuth() {
-  const { setUser, setProfile, setInitialized } = useAuthStore()
-
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const user = session?.user ?? null
-      setUser(user)
+    let mounted = true
 
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single()
-        setProfile(profile)
+    const safetyTimeout = setTimeout(() => {
+      if (mounted) {
+        useAuthStore.setState({ initialized: true })
       }
+    }, 5000)
 
-      setInitialized(true)
-    })
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!mounted) return
+        clearTimeout(safetyTimeout)
+        if (session?.user) {
+          useAuthStore.setState({ user: session.user })
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('user_id', session.user.id)
+              .single()
+            if (mounted) {
+              useAuthStore.setState({ profile, initialized: true })
+            }
+          } catch {
+            if (mounted) useAuthStore.setState({ initialized: true })
+          }
+        } else {
+          if (mounted) useAuthStore.setState({ user: null, profile: null, initialized: true })
+        }
+      } catch {
+        if (mounted) {
+          clearTimeout(safetyTimeout)
+          useAuthStore.setState({ initialized: true })
+        }
+      }
+    }
 
-    // Listen for auth changes
+    init()
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        const user = session?.user ?? null
-        setUser(user)
-
-        if (user && event === 'SIGNED_IN') {
-          // Always re-fetch fresh profile on sign-in (never use cached state)
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('user_id', user.id)
-            .single()
-          setProfile(profile)
-        } else if (user && event === 'TOKEN_REFRESHED') {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('user_id', user.id)
-            .single()
-          setProfile(profile)
-        } else if (event === 'SIGNED_OUT') {
-          setProfile(null)
+        if (!mounted) return
+        clearTimeout(safetyTimeout)
+        if (session?.user) {
+          useAuthStore.setState({ user: session.user })
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('user_id', session.user.id)
+              .single()
+            if (mounted) {
+              useAuthStore.setState({ profile, initialized: true })
+            }
+          } catch {
+            if (mounted) useAuthStore.setState({ initialized: true })
+          }
+        } else {
+          if (mounted) {
+            useAuthStore.setState({ user: null, profile: null, initialized: true })
+          }
         }
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [setUser, setProfile, setInitialized])
+    return () => {
+      mounted = false
+      clearTimeout(safetyTimeout)
+      subscription.unsubscribe()
+    }
+  }, []) // MUST be empty deps
 }
