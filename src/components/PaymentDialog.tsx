@@ -45,11 +45,19 @@ export default function PaymentDialog({
   useEffect(() => {
     const init = async () => {
       try {
+        // Explicitly get the session token — don't rely on SDK auto-inject
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) {
+          throw new Error('You must be logged in to make a payment')
+        }
+
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: { matchId },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
         })
         // Function always returns 200 — errors are in data.error
-        // SDK error = network/auth failure before the function ran
         if (error) throw new Error('Network error: ' + error.message)
         if (!data) throw new Error('No response from payment service')
         if (data.error) throw new Error(data.error)
