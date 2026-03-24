@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 interface CheckResult {
   name: string;
   status: "pending" | "pass" | "fail";
@@ -288,6 +288,14 @@ export default function AdminDiagnostics() {
           textAlign: "center", marginTop: "32px" }}>
           {passing}/{CHECKS.length} passing
         </p>
+        <div style={{ display: "flex", gap: "16px", justifyContent: "center", marginTop: "24px" }}>
+          <Link to="/admin/validation" style={{ color: "#E8FF47", fontSize: "13px", textDecoration: "none" }}>
+            → View Match Validation
+          </Link>
+          <Link to="/admin/seed" style={{ color: "#666", fontSize: "13px", textDecoration: "none" }}>
+            Seed Data
+          </Link>
+        </div>
       </div>
     </div>
   );

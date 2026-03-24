@@ -16,6 +16,7 @@ const ProfilePage = React.lazy(() => import('@/pages/Profile'))
 const Analytics = React.lazy(() => import('@/pages/Analytics'))
 const Seed = React.lazy(() => import('@/pages/admin/Seed'))
 const AdminDiagnostics = React.lazy(() => import('@/pages/AdminDiagnostics'))
+const AdminValidation = React.lazy(() => import('@/pages/admin/Validation'))
 
 // ─── Loading fallback ────────────────────────────────────────────────────────
 
@@ -242,6 +243,14 @@ export default function App() {
           element={
             <RequireAuth>
               <AdminDiagnostics />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/validation"
+          element={
+            <RequireAuth>
+              <AdminValidation />
             </RequireAuth>
           }
         />
