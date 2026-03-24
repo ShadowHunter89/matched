@@ -73,15 +73,20 @@ function RequireAuth({ children, requireRole, requireOnboarding }: RequireAuthPr
     return <Navigate to="/dashboard" replace />
   }
 
-  // requireOnboarding means onboarding must be complete
-  if (requireOnboarding && profile && !profile.onboarding_complete) {
-    const destination =
-      profile.role === 'professional'
-        ? '/onboarding/professional'
-        : profile.role === 'client'
-        ? '/onboarding/client'
-        : '/role'
-    return <Navigate to={destination} replace />
+  // requireOnboarding: if onboarding_complete === true, always go to dashboard
+  // Only redirect to onboarding if role is set AND onboarding_complete is explicitly false
+  if (requireOnboarding && profile) {
+    if (profile.onboarding_complete === true) {
+      // Already onboarded — allow through
+    } else if (profile.role && profile.onboarding_complete === false) {
+      const destination =
+        profile.role === 'professional'
+          ? '/onboarding/professional'
+          : '/onboarding/client'
+      return <Navigate to={destination} replace />
+    } else if (!profile.role) {
+      return <Navigate to="/role" replace />
+    }
   }
 
   return <>{children}</>
@@ -224,8 +229,22 @@ export default function App() {
         />
 
         {/* Admin */}
-        <Route path="/admin/seed" element={<Seed />} />
-        <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
+        <Route
+          path="/admin/seed"
+          element={
+            <RequireAuth>
+              <Seed />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/diagnostics"
+          element={
+            <RequireAuth>
+              <AdminDiagnostics />
+            </RequireAuth>
+          }
+        />
 
         {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />

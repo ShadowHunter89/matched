@@ -40,6 +40,7 @@ interface FormState {
 
 interface FormErrors {
   title?: string
+  description?: string
   skills?: string
   budget?: string
 }
@@ -106,15 +107,20 @@ export default function NewOpportunity() {
     }
   }
 
+  const sanitize = (str: string): string => str.replace(/<[^>]*>/g, '').trim().slice(0, 5000)
+
   // ── Validate
   const validate = (): boolean => {
     const errs: FormErrors = {}
     if (!form.title.trim()) errs.title = 'Title is required'
+    if (form.title.trim().length > 0 && form.title.trim().length < 5) errs.title = 'Title must be at least 5 characters'
+    if (!form.description.trim()) errs.description = 'Description is required'
+    if (form.description.trim().length > 0 && form.description.trim().length < 50) errs.description = 'Description must be at least 50 characters'
     if (form.skills.length === 0) errs.skills = 'At least one skill is required'
     const min = parseFloat(form.budgetMin)
     const max = parseFloat(form.budgetMax)
-    if (form.budgetMin && form.budgetMax && !isNaN(min) && !isNaN(max) && min > max) {
-      errs.budget = 'Budget minimum cannot exceed maximum'
+    if (form.budgetMin && form.budgetMax && !isNaN(min) && !isNaN(max) && min >= max) {
+      errs.budget = 'Budget minimum must be less than maximum'
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -128,10 +134,22 @@ export default function NewOpportunity() {
     setSubmitting(true)
 
     try {
+      // Rate limiting check: max 10 opportunities per day
+      const { count } = await supabase
+        .from('opportunities')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', user.id)
+        .gte('created_at', new Date(Date.now() - 86400000).toISOString())
+      if ((count || 0) >= 10) {
+        setErrors({ title: 'Daily limit reached. You can post up to 10 opportunities per day.' })
+        setSubmitting(false)
+        return
+      }
+
       const payload: Record<string, unknown> = {
-        title: form.title.trim(),
-        description: form.description.trim() || null,
-        required_skills: form.skills,
+        title: sanitize(form.title),
+        description: sanitize(form.description) || null,
+        required_skills: form.skills.map((s) => sanitize(s)),
         remote_option: form.remoteOption,
         status: 'open',
       }
@@ -139,9 +157,8 @@ export default function NewOpportunity() {
       if (form.budgetMax) payload.budget_max = Math.round(parseFloat(form.budgetMax) * 100)
       if (form.hoursPerWeek) payload.hours_per_week = parseInt(form.hoursPerWeek)
       if (form.durationWeeks) payload.duration_weeks = parseInt(form.durationWeeks)
-      if (form.timezoneRequirements) payload.timezone_requirements = form.timezoneRequirements.trim()
+      if (form.timezoneRequirements) payload.timezone_requirements = sanitize(form.timezoneRequirements)
 
-      console.log("Posting opportunity, client_id:", user.id)
       const { data: opp, error } = await supabase
         .from('opportunities')
         .insert({ client_id: user.id, ...payload })
@@ -149,29 +166,28 @@ export default function NewOpportunity() {
         .single()
 
       if (error) {
-        console.error("Insert failed:", error)
+        console.error('Insert failed:', error)
         throw error
       }
-      console.log("Created opportunity:", opp.id)
 
       setSubmitting(false)
       setMatching(true)
 
-      const { data: matchResult, error: matchError } = await supabase
+      const { error: matchError } = await supabase
         .functions.invoke('match-professionals', {
           body: { opportunityId: opp.id },
         })
-      console.log("Match result:", matchResult, matchError)
 
       setMatching(false)
       setToast(matchError
         ? 'Opportunity posted! Processing matches...'
-        : `Opportunity posted! Found ${matchResult?.matchesFound || 0} matches via ${matchResult?.method}`)
+        : 'Opportunity posted! Matching professionals now...')
 
       setTimeout(() => {
-        navigate('/dashboard/client')
+        navigate('/dashboard/client', { state: { selectedOppId: opp.id } })
       }, 800)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      console.error('Failed to post opportunity:', err)
       setSubmitting(false)
       setMatching(false)
       setToast('Failed to post opportunity. Please try again.')
@@ -264,13 +280,13 @@ export default function NewOpportunity() {
           </FieldGroup>
 
           {/* Description */}
-          <FieldGroup label="Description">
+          <FieldGroup label="Description" error={errors.description} required>
             <textarea
               value={form.description}
               onChange={(e) => setField('description', e.target.value)}
               placeholder="Describe the project, context, team, and what success looks like..."
               rows={5}
-              style={{ ...inputStyle(false), minHeight: 120, resize: 'vertical', lineHeight: 1.6 }}
+              style={{ ...inputStyle(!!errors.description), minHeight: 120, resize: 'vertical', lineHeight: 1.6 }}
             />
           </FieldGroup>
 

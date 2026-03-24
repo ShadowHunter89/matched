@@ -72,14 +72,26 @@ function statusColor(status: string): string {
 
 function calcCompleteness(profile: ProfProfile | null): number {
   if (!profile) return 0
-  let score = 0
-  if (profile.headline) score += 20
-  if (profile.bio) score += 20
-  if (profile.skills?.length > 3) score += 20
-  if (profile.hourly_rate_min && profile.hourly_rate_max) score += 15
-  if (profile.availability_hours) score += 15
-  if (profile.years_experience) score += 10
-  return score
+  const fields = [
+    { key: 'headline', weight: 15 },
+    { key: 'bio', weight: 15 },
+    { key: 'years_experience', weight: 10 },
+    { key: 'hourly_rate_min', weight: 10 },
+    { key: 'hourly_rate_max', weight: 10 },
+    { key: 'availability_hours', weight: 10 },
+    { key: 'timezone', weight: 5 },
+    { key: 'remote_preference', weight: 5 },
+    { key: 'preferred_industries', weight: 10 },
+  ]
+  const skillsScore = Math.min((profile?.skills?.length || 0) / 5, 1) * 10
+  const fieldScore = fields.reduce((total, f) => {
+    const val = (profile as unknown as Record<string, unknown>)[f.key]
+    const filled = Array.isArray(val)
+      ? val.length > 0
+      : val !== null && val !== undefined && val !== ''
+    return total + (filled ? f.weight : 0)
+  }, 0)
+  return Math.min(Math.round(fieldScore + skillsScore), 100)
 }
 
 const DECLINE_REASONS = [
@@ -349,7 +361,18 @@ export default function ProfessionalDashboard() {
           {/* Match List */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
             {loading ? (
-              <div style={{ padding: 24, color: '#888', fontSize: 14 }}>Loading...</div>
+              <div style={{ padding: '8px 0' }}>
+                {[0, 1, 2].map((i) => (
+                  <div key={i} style={{ padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <div style={{ background: '#1e1e1e', borderRadius: 12, height: 16, animation: 'pulse 1.5s infinite', width: '65%' }} />
+                      <div style={{ background: '#1e1e1e', borderRadius: 12, height: 16, animation: 'pulse 1.5s infinite', width: '20%' }} />
+                    </div>
+                    <div style={{ background: '#1e1e1e', borderRadius: 12, height: 12, animation: 'pulse 1.5s infinite', width: '40%' }} />
+                    <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+                  </div>
+                ))}
+              </div>
             ) : visibleMatches.length === 0 ? (
               <EmptyState tab={tab} completeness={completeness} />
             ) : (

@@ -1,11 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Match, Opportunity } from '@/lib/types'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Button from '@/components/ui/Button'
-import Badge from '@/components/ui/Badge'
 import SkillTag from '@/components/ui/SkillTag'
 import PaymentDialog from '@/components/PaymentDialog'
 
@@ -41,6 +40,17 @@ interface StatsData {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function expiryText(createdAt: string): { text: string; color: string } | null {
+  const expires = new Date(createdAt).getTime() + 7 * 24 * 60 * 60 * 1000
+  const now = Date.now()
+  const daysLeft = Math.ceil((expires - now) / 86400000)
+  if (daysLeft <= 0) return { text: 'Expired', color: '#555' }
+  if (daysLeft === 1) return { text: 'Expires tomorrow', color: '#ff4444' }
+  if (daysLeft <= 2) return { text: `Expires in ${daysLeft} days`, color: '#E8FF47' }
+  if (daysLeft <= 7) return { text: `Expires in ${daysLeft} days`, color: '#666' }
+  return null
+}
+
 function statusColor(status: string): string {
   switch (status) {
     case 'matching': return '#E8FF47'
@@ -74,6 +84,7 @@ function timeAgo(dateStr: string): string {
 export default function ClientDashboard() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [opportunities, setOpportunities] = useState<OpportunityWithCounts[]>([])
   const [selected, setSelected] = useState<OpportunityWithCounts | null>(null)
@@ -84,7 +95,7 @@ export default function ClientDashboard() {
   const [paymentMatch, setPaymentMatch] = useState<MatchWithProfessional | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [profCount, setProfCount] = useState(0)
+  const didAutoSelect = useRef(false)
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -105,7 +116,7 @@ export default function ClientDashboard() {
 
     if (!opps) { setLoadingOpps(false); return }
 
-    // Fetch match counts
+    // Fetch match counts and all match statuses for stats
     const { data: allMatches } = await supabase
       .from('matches')
       .select('opportunity_id, status')
@@ -134,59 +145,16 @@ export default function ClientDashboard() {
       connected,
     })
 
-    setLoadingOpps(false)
-  }, [user])
-
-  // ── fetchData: unified refresh
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    setLoadingOpps(true);
-    console.log("Fetching for client:", user.id);
-    const { data: opps, error } = await supabase
-      .from("opportunities")
-      .select("*")
-      .eq("client_id", user.id)
-      .order("created_at", { ascending: false });
-    console.log("Opps:", opps?.length, error?.message);
-    if (opps && opps.length > 0) {
-      const oppIds = opps.map(o => o.id);
-      const { data: allMatches } = await supabase
-        .from("matches")
-        .select(`
-          *,
-          profiles:professional_id (full_name),
-          professional_profiles:professional_id (
-            headline, skills, hourly_rate_min,
-            hourly_rate_max, availability_hours
-          )
-        `)
-        .in("opportunity_id", oppIds)
-        .order("similarity_score", { ascending: false });
-      const m = allMatches || [];
-      const withCounts: OpportunityWithCounts[] = opps.map(o => ({
-        ...o,
-        matchCount: m.filter(x => x.opportunity_id === o.id).length,
-      }));
-      setOpportunities(withCounts);
-      setStats({
-        opportunities: opps.length,
-        matched: m.length,
-        interested: m.filter(x => x.status === "accepted").length,
-        connected: m.filter(x => x.status === "connected").length,
-      });
-      if (selected) {
-        setMatches((m.filter(x => x.opportunity_id === selected.id) as MatchWithProfessional[]));
-      }
-    } else {
-      setOpportunities((opps || []).map(o => ({ ...o, matchCount: 0 })));
-      setStats({ opportunities: 0, matched: 0, interested: 0, connected: 0 });
+    // Auto-select from router state (e.g. after posting new opportunity)
+    const selectedOppId = (location.state as { selectedOppId?: string } | null)?.selectedOppId
+    if (selectedOppId && !didAutoSelect.current) {
+      didAutoSelect.current = true
+      const target = withCounts.find((o) => o.id === selectedOppId)
+      if (target) setSelected(target)
     }
-    const { count } = await supabase
-      .from("professional_profiles")
-      .select("*", { count: "exact", head: true });
-    setProfCount(count || 0);
-    setLoadingOpps(false);
-  }, [user, selected])
+
+    setLoadingOpps(false)
+  }, [user, location.state])
 
   // ── Fetch matches for selected opportunity
   const fetchMatches = useCallback(async (opportunityId: string) => {
@@ -342,7 +310,16 @@ export default function ClientDashboard() {
             {/* List */}
             <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
               {loadingOpps ? (
-                <div style={{ padding: 24, color: '#888', fontSize: 14 }}>Loading...</div>
+                <div style={{ padding: '8px 0' }}>
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} style={{ padding: '14px 16px' }}>
+                      <div style={{ background: '#1e1e1e', borderRadius: 12, height: 16, marginBottom: 8, animation: 'pulse 1.5s infinite', width: '80%' }} />
+                      <div style={{ background: '#1e1e1e', borderRadius: 12, height: 12, marginBottom: 8, animation: 'pulse 1.5s infinite', width: '60%' }} />
+                      <div style={{ background: '#1e1e1e', borderRadius: 12, height: 10, animation: 'pulse 1.5s infinite', width: '40%' }} />
+                      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+                    </div>
+                  ))}
+                </div>
               ) : opportunities.length === 0 ? (
                 <OpportunityEmptyState />
               ) : (
@@ -470,12 +447,21 @@ function OpportunityCard({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: '#888' }}>
           {opp.matchCount} matched
         </span>
         <span style={{ color: '#2a2a2a' }}>·</span>
         <span style={{ fontSize: 12, color: '#555' }}>{timeAgo(opp.created_at)}</span>
+        {(() => {
+          const exp = expiryText(opp.created_at)
+          return exp ? (
+            <>
+              <span style={{ color: '#2a2a2a' }}>·</span>
+              <span style={{ fontSize: 11, color: exp.color, fontWeight: 600 }}>{exp.text}</span>
+            </>
+          ) : null
+        })()}
       </div>
     </div>
   )
@@ -523,7 +509,15 @@ function MatchedProfessionalsList({
       </div>
 
       {loading ? (
-        <div style={{ color: '#888', fontSize: 14 }}>Loading matches...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} style={{ background: '#141414', border: '1px solid #2a2a2a', borderRadius: 16, padding: 24 }}>
+              <div style={{ background: '#1e1e1e', borderRadius: 12, height: 18, marginBottom: 12, animation: 'pulse 1.5s infinite', width: '50%' }} />
+              <div style={{ background: '#1e1e1e', borderRadius: 12, height: 13, marginBottom: 8, animation: 'pulse 1.5s infinite', width: '70%' }} />
+              <div style={{ background: '#1e1e1e', borderRadius: 12, height: 13, animation: 'pulse 1.5s infinite', width: '40%' }} />
+            </div>
+          ))}
+        </div>
       ) : matches.length === 0 ? (
         <div
           style={{
@@ -534,8 +528,20 @@ function MatchedProfessionalsList({
             textAlign: 'center',
           }}
         >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              border: '3px solid #2a2a2a',
+              borderTopColor: '#E8FF47',
+              borderRadius: '50%',
+              animation: 'spin 0.9s linear infinite',
+              margin: '0 auto 16px',
+            }}
+          />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           <p style={{ color: '#888', margin: 0, fontSize: 15 }}>
-            No matches yet. We're analyzing your opportunity.
+            Matching in progress — Professionals have been notified. Check back in a few hours.
           </p>
         </div>
       ) : (

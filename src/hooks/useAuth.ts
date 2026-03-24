@@ -29,7 +29,15 @@ export function useAuth() {
         const user = session?.user ?? null
         setUser(user)
 
-        if (user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        if (user && event === 'SIGNED_IN') {
+          // Always re-fetch fresh profile on sign-in (never use cached state)
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .single()
+          setProfile(profile)
+        } else if (user && event === 'TOKEN_REFRESHED') {
           const { data: profile } = await supabase
             .from('profiles')
             .select('*')

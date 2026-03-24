@@ -126,13 +126,16 @@ export default function ProfessionalOnboarding() {
     if (step === 1) {
       if (!fullName.trim()) return 'Please enter your full name.'
       if (!headline.trim()) return 'Please enter a professional headline.'
+      if (headline.trim().length < 10) return 'Headline must be at least 10 characters.'
+      if (!bio.trim()) return 'Please enter a bio.'
+      if (bio.trim().length < 50) return 'Bio must be at least 50 characters.'
     }
     if (step === 2) {
-      if (skills.length === 0) return 'Please add at least one skill.'
+      if (skills.length < 3) return 'Please add at least 3 skills.'
     }
     if (step === 3) {
       if (!rateMin || !rateMax) return 'Please enter your hourly rate range.'
-      if (Number(rateMin) > Number(rateMax)) return 'Minimum rate cannot exceed maximum rate.'
+      if (Number(rateMin) >= Number(rateMax)) return 'Minimum rate must be less than maximum rate.'
     }
     return ''
   }
