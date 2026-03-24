@@ -58,12 +58,22 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           .eq('status', 'pending')
         setPendingMatches(count ?? 0)
       } else if (profile?.role === 'client') {
-        const { count } = await supabase
-          .from('matches')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'accepted')
-          .eq('payment_status', 'unpaid')
-        setAcceptedUnpaidMatches(count ?? 0)
+        const { data: clientOpps } = await supabase
+          .from('opportunities')
+          .select('id')
+          .eq('client_id', user.id)
+        const oppIds = (clientOpps || []).map((o) => o.id)
+        if (oppIds.length > 0) {
+          const { count } = await supabase
+            .from('matches')
+            .select('*', { count: 'exact', head: true })
+            .in('opportunity_id', oppIds)
+            .eq('status', 'accepted')
+            .eq('payment_status', 'unpaid')
+          setAcceptedUnpaidMatches(count ?? 0)
+        } else {
+          setAcceptedUnpaidMatches(0)
+        }
       }
     }
 

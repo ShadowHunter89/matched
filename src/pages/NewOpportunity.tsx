@@ -20,7 +20,7 @@ const SKILL_SUGGESTIONS = [
 const REMOTE_OPTIONS = [
   { value: 'remote_only', label: 'Remote only' },
   { value: 'hybrid', label: 'Hybrid' },
-  { value: 'on_site', label: 'On-site only' },
+  { value: 'onsite_only', label: 'On-site only' },
   { value: 'flexible', label: 'Flexible' },
 ]
 
