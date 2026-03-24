@@ -1,23 +1,33 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Always return 200 — embed errors in the body so the Supabase SDK
-// doesn't swallow the response and we can read the actual message.
-function ok(data: Record<string, unknown>) {
+function respond(data: Record<string, unknown>) {
   return new Response(JSON.stringify(data), {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
 
+// Decode JWT locally — no network round-trip needed
+function decodeJWT(token: string): { sub?: string; role?: string } | null {
+  try {
+    const payload = token.split(".")[1];
+    const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   // ── 1. Parse body ──────────────────────────────────────────────────────────
   let matchId: string | undefined;
@@ -25,37 +35,34 @@ serve(async (req) => {
     const body = await req.json();
     matchId = body?.matchId;
   } catch {
-    return ok({ error: "Invalid request body — expected JSON with matchId" });
+    return respond({ error: "Invalid JSON body" });
   }
+  if (!matchId) return respond({ error: "matchId is required" });
 
-  if (!matchId) {
-    return ok({ error: "matchId is required" });
+  // ── 2. Auth — decode JWT locally (fast, no HTTP call) ─────────────────────
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace("Bearer ", "");
+  const claims = decodeJWT(token);
+
+  if (!claims?.sub) {
+    return respond({ error: "Not authenticated — please log in again" });
   }
+  const userId = claims.sub;
 
-  // ── 2. Env vars ────────────────────────────────────────────────────────────
+  console.log("create-payment-intent | user:", userId, "match:", matchId);
+
+  // ── 3. Env vars ────────────────────────────────────────────────────────────
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const stripeKey   = Deno.env.get("STRIPE_SECRET_KEY");
 
-  if (!supabaseUrl || !supabaseKey) return ok({ error: "Supabase env vars not configured" });
-  if (!stripeKey)                   return ok({ error: "STRIPE_SECRET_KEY not configured" });
+  if (!supabaseUrl || !supabaseKey) return respond({ error: "Supabase not configured" });
+  if (!stripeKey)                   return respond({ error: "Stripe not configured" });
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // ── 3. Auth ────────────────────────────────────────────────────────────────
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return ok({ error: "Missing Authorization header" });
-
-  const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
-  if (authErr || !user) {
-    return ok({ error: "Unauthorized: " + (authErr?.message ?? "no session") });
-  }
-
-  console.log("create-payment-intent | user:", user.id, "matchId:", matchId);
-
   try {
-    // ── 4. Fetch match ───────────────────────────────────────────────────────
+    // ── 4. Fetch match ─────────────────────────────────────────────────────
     const { data: match, error: matchErr } = await supabase
       .from("matches")
       .select("id, payment_status, opportunity_id, professional_id, stripe_payment_intent_id")
@@ -63,97 +70,91 @@ serve(async (req) => {
       .single();
 
     if (matchErr || !match) {
-      console.error("match fetch:", matchErr?.message);
-      return ok({ error: "Match not found (id: " + matchId + ")" });
+      return respond({ error: "Match not found" });
     }
-
     if (match.payment_status === "paid") {
-      return ok({ error: "This match has already been paid for" });
+      return respond({ error: "Already paid for this connection" });
     }
 
-    // If we already created an intent, return the same secret
-    if (match.stripe_payment_intent_id) {
-      const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-      try {
-        const existing = await stripe.paymentIntents.retrieve(match.stripe_payment_intent_id);
-        if (existing.client_secret && existing.status !== "canceled") {
-          console.log("Returning existing intent:", existing.id);
-          return ok({ clientSecret: existing.client_secret });
-        }
-      } catch {
-        // Intent no longer valid — create a new one below
-      }
-    }
-
-    // ── 5. Verify ownership ──────────────────────────────────────────────────
-    const { data: opportunity, error: oppErr } = await supabase
+    // ── 5. Verify client owns this opportunity ─────────────────────────────
+    const { data: opp, error: oppErr } = await supabase
       .from("opportunities")
       .select("id, title, client_id")
       .eq("id", match.opportunity_id)
       .single();
 
-    if (oppErr || !opportunity) {
-      console.error("opportunity fetch:", oppErr?.message);
-      return ok({ error: "Opportunity not found" });
+    if (oppErr || !opp) {
+      return respond({ error: "Opportunity not found" });
+    }
+    if (opp.client_id !== userId) {
+      return respond({ error: "You do not own this opportunity" });
     }
 
-    if (opportunity.client_id !== user.id) {
-      console.error("Ownership mismatch:", opportunity.client_id, "!=", user.id);
-      return ok({ error: "Unauthorized: you did not post this opportunity" });
+    // ── 6. Re-use existing intent if still valid ───────────────────────────
+    if (match.stripe_payment_intent_id) {
+      try {
+        const { Stripe } = await import("https://esm.sh/stripe@14.21.0?target=deno");
+        const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+        const existing = await stripe.paymentIntents.retrieve(match.stripe_payment_intent_id);
+        if (existing.client_secret && existing.status !== "canceled") {
+          return respond({ clientSecret: existing.client_secret });
+        }
+      } catch {
+        // fall through to create new
+      }
     }
 
-    // ── 6. Stripe customer ───────────────────────────────────────────────────
+    // ── 7. Get or create Stripe customer ───────────────────────────────────
+    const { Stripe } = await import("https://esm.sh/stripe@14.21.0?target=deno");
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
     let customerId: string | undefined;
-    const { data: clientProfile } = await supabase
+    const { data: cp } = await supabase
       .from("client_profiles")
       .select("stripe_customer_id")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .single();
 
-    customerId = clientProfile?.stripe_customer_id ?? undefined;
+    customerId = cp?.stripe_customer_id ?? undefined;
 
     if (!customerId) {
-      console.log("Creating Stripe customer for:", user.email);
+      // Get user email from auth
+      const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId);
       const customer = await stripe.customers.create({
-        email: user.email ?? undefined,
-        metadata: { supabaseUserId: user.id },
+        email: authUser?.email ?? undefined,
+        metadata: { supabaseUserId: userId },
       });
       customerId = customer.id;
-      // Upsert — works even if no client_profiles row yet
       await supabase
         .from("client_profiles")
-        .upsert({ user_id: user.id, stripe_customer_id: customerId });
+        .upsert({ user_id: userId, stripe_customer_id: customerId });
     }
 
-    // ── 7. Create payment intent ─────────────────────────────────────────────
-    console.log("Creating payment intent | customer:", customerId);
+    // ── 8. Create payment intent ───────────────────────────────────────────
     const paymentIntent = await stripe.paymentIntents.create({
       amount: 15000,
       currency: "usd",
       customer: customerId,
       metadata: {
         matchId,
-        clientId: user.id,
+        clientId: userId,
         opportunityId: match.opportunity_id,
         professionalId: match.professional_id,
       },
-      description: `Matched connection: ${opportunity.title}`,
+      description: `Matched: ${opp.title}`,
     });
 
-    // Store intent ID for idempotency
     await supabase
       .from("matches")
       .update({ stripe_payment_intent_id: paymentIntent.id })
       .eq("id", matchId);
 
     console.log("Payment intent created:", paymentIntent.id);
-    return ok({ clientSecret: paymentIntent.client_secret! });
+    return respond({ clientSecret: paymentIntent.client_secret! });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("create-payment-intent error:", msg);
-    return ok({ error: msg });
+    console.error("Error:", msg);
+    return respond({ error: msg });
   }
 });
