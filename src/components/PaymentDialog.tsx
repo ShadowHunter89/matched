@@ -48,13 +48,12 @@ export default function PaymentDialog({
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: { matchId },
         })
-        // Supabase SDK wraps the real error — extract it from the response body first
-        if (error) {
-          const actualMessage = data?.error || error.message
-          throw new Error(actualMessage)
-        }
-        if (data?.error) throw new Error(data.error)
-        if (!data?.clientSecret) throw new Error('No client secret returned')
+        // Function always returns 200 — errors are in data.error
+        // SDK error = network/auth failure before the function ran
+        if (error) throw new Error('Network error: ' + error.message)
+        if (!data) throw new Error('No response from payment service')
+        if (data.error) throw new Error(data.error)
+        if (!data.clientSecret) throw new Error('Payment service did not return a client secret')
         setClientSecret(data.clientSecret)
       } catch (err: any) {
         setInitError(err.message || 'Failed to initialize payment')
