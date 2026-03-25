@@ -31,15 +31,22 @@ export default function Role() {
     setLoading(true)
 
     try {
-      // Update profile role
+      // Upsert the profile row with the chosen role (handles both new and existing profiles)
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ role: selected })
-        .eq('user_id', user.id)
+        .upsert(
+          {
+            user_id: user.id,
+            full_name: profile?.full_name || user.user_metadata?.full_name || null,
+            role: selected,
+            onboarding_complete: false,
+          },
+          { onConflict: 'user_id' }
+        )
 
       if (profileError) throw profileError
 
-      // Upsert role-specific profile
+      // Upsert role-specific profile table
       if (selected === 'professional') {
         const { error: profError } = await supabase
           .from('professional_profiles')
@@ -52,9 +59,23 @@ export default function Role() {
         if (clientError) throw clientError
       }
 
-      // Update store
-      if (profile) {
-        setProfile({ ...profile, role: selected })
+      // Always fetch fresh profile and update store — do NOT rely on stale state
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+
+      if (freshProfile) {
+        setProfile(freshProfile)
+      } else {
+        // Fallback: update store manually so router doesn't loop
+        setProfile({
+          ...(profile as any),
+          user_id: user.id,
+          role: selected,
+          onboarding_complete: false,
+        })
       }
 
       navigate(`/onboarding/${selected}`)
