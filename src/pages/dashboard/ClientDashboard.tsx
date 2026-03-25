@@ -639,8 +639,8 @@ function ProfessionalCard({
   const rateMin = prof?.hourly_rate_min ? Math.round(prof.hourly_rate_min / 100) : null
   const rateMax = prof?.hourly_rate_max ? Math.round(prof.hourly_rate_max / 100) : null
 
-  const showConnect = match.status === 'accepted' && match.payment_status === 'unpaid'
   const isConnected = match.payment_status === 'paid' || match.status === 'connected'
+  const showConnect = !isConnected && match.status !== 'declined' && match.status !== 'expired'
 
   return (
     <div
