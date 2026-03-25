@@ -48,7 +48,7 @@ export default function ClientOnboarding() {
     document.title = 'Set up your company — Matched'
   }, [])
 
-  // Check if client_profiles already has company_name — if so, redirect
+  // Check if client already completed onboarding — if so, fix store and redirect
   useEffect(() => {
     const checkExisting = async () => {
       if (!user) { setCheckingExisting(false); return }
@@ -60,6 +60,17 @@ export default function ClientOnboarding() {
           .single()
 
         if (data?.company_name) {
+          // Ensure DB and store are marked complete before redirecting
+          await supabase
+            .from('profiles')
+            .update({ onboarding_complete: true })
+            .eq('user_id', user.id)
+          const { data: fresh } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .single()
+          if (fresh) setProfile(fresh)
           navigate('/dashboard/client')
           return
         }
