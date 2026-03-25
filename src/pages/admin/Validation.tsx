@@ -109,8 +109,9 @@ export default function Validation() {
         user_id: p.user_id,
         headline: p.headline || '—',
         skills: p.skills || [],
-        hourly_rate_min: p.hourly_rate_min,
-        hourly_rate_max: p.hourly_rate_max,
+        // DB stores in cents — convert to dollars for display
+        hourly_rate_min: p.hourly_rate_min ? Math.round(p.hourly_rate_min / 100) : null,
+        hourly_rate_max: p.hourly_rate_max ? Math.round(p.hourly_rate_max / 100) : null,
         has_embedding: p.embedding !== null,
         full_name: nameMap[p.user_id] || 'Unknown',
       }))
@@ -119,7 +120,7 @@ export default function Validation() {
       // 2. Opportunities + client names
       const { data: oppData, error: oppErr } = await supabase
         .from('opportunities')
-        .select('id, title, skills_required, budget_min, budget_max, status, created_at, client_id')
+        .select('id, title, required_skills, budget_min, budget_max, status, created_at, client_id')
         .order('created_at', { ascending: false })
 
       if (oppErr) throw new Error(`opportunities: ${oppErr.message}`)
@@ -136,22 +137,22 @@ export default function Validation() {
       const opps: Opportunity[] = (oppData || []).map((o) => ({
         id: o.id,
         title: o.title,
-        skills_required: o.skills_required || [],
-        budget_min: o.budget_min,
-        budget_max: o.budget_max,
+        skills_required: o.required_skills || [],
+        budget_min: o.budget_min ? Math.round(o.budget_min / 100) : null,
+        budget_max: o.budget_max ? Math.round(o.budget_max / 100) : null,
         status: o.status,
         created_at: o.created_at,
         client_name: clientMap[o.client_id] || 'Unknown',
       }))
       setOpportunities(opps)
 
-      // 3. All matches
+      // 3. All matches — DB column is similarity_score, we alias to score for local use
       const { data: matchData, error: matchErr } = await supabase
         .from('matches')
-        .select('opportunity_id, professional_id, score, status')
+        .select('opportunity_id, professional_id, similarity_score, status')
 
       if (matchErr) throw new Error(`matches: ${matchErr.message}`)
-      setMatches(matchData || [])
+      setMatches((matchData || []).map((m) => ({ ...m, score: m.similarity_score ?? 0 })))
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {

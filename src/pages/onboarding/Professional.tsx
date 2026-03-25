@@ -198,8 +198,16 @@ export default function ProfessionalOnboarding() {
         // Non-fatal — embedding can be retried asynchronously
       }
 
-      // Update auth store
-      if (profile) {
+      // Always fetch fresh profile and update store — handles both new and existing users
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+
+      if (freshProfile) {
+        setProfile(freshProfile)
+      } else if (profile) {
         setProfile({ ...profile, full_name: fullName.trim(), onboarding_complete: true })
       }
 

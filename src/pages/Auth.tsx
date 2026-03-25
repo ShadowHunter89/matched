@@ -10,7 +10,7 @@ type Tab = 'signin' | 'signup'
 export default function Auth() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { setProfile } = useAuthStore()
+  const { setUser, setProfile } = useAuthStore()
 
   const [tab, setTab] = useState<Tab>(
     (searchParams.get('tab') as Tab) === 'signup' ? 'signup' : 'signin'
@@ -77,6 +77,9 @@ export default function Auth() {
       if (signInError) throw signInError
 
       if (data?.user) {
+        // Sync user into store immediately so route guards don't redirect
+        setUser(data.user)
+
         // Fetch profile
         const { data: profileData } = await supabase
           .from('profiles')

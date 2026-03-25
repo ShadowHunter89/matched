@@ -110,8 +110,16 @@ export default function ClientOnboarding() {
         .eq('user_id', user.id)
       if (profileError) throw profileError
 
-      // Update auth store
-      if (profile) {
+      // Always fetch fresh profile and update store — handles both new and existing users
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+
+      if (freshProfile) {
+        setProfile(freshProfile)
+      } else if (profile) {
         setProfile({ ...profile, onboarding_complete: true })
       }
 
