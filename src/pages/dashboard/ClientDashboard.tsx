@@ -262,8 +262,8 @@ export default function ClientDashboard() {
   }, [user?.id, selected?.id])
 
   const handlePaymentSuccess = (email: string) => {
-    showToast(`Connected! Email: ${email}`)
-    setPaymentMatch(null)
+    // Don't close the dialog here — let the user see the success screen and copy the email.
+    // The dialog's own "Done" button will call onClose() to dismiss it.
     if (selected) fetchMatches(selected.id)
     fetchOpportunities()
   }

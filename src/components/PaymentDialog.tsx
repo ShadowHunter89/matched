@@ -185,6 +185,7 @@ export default function PaymentDialog({
               matchId={matchId}
               clientSecret={clientSecret}
               onSuccess={onSuccess}
+              onClose={onClose}
             />
           </Elements>
         )}
@@ -198,10 +199,12 @@ export default function PaymentDialog({
 function PaymentForm({
   matchId,
   onSuccess,
+  onClose,
 }: {
   matchId: string
   clientSecret: string
   onSuccess: (email: string) => void
+  onClose: () => void
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -336,11 +339,30 @@ function PaymentForm({
               textDecoration: 'none',
               width: '100%',
               justifyContent: 'center',
+              marginBottom: 12,
             }}
           >
             Send email →
           </a>
         )}
+
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: '1px solid #2a2a2a',
+            borderRadius: 100,
+            color: '#888',
+            padding: '12px 24px',
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          Done
+        </button>
       </div>
     )
   }
