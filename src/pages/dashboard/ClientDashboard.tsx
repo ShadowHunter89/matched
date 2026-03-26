@@ -93,6 +93,7 @@ export default function ClientDashboard() {
   const [loadingMatches, setLoadingMatches] = useState(false)
   const [stats, setStats] = useState<StatsData>({ opportunities: 0, matched: 0, interested: 0, connected: 0 })
   const [paymentMatch, setPaymentMatch] = useState<MatchWithProfessional | null>(null)
+  const [connectionSuccess, setConnectionSuccess] = useState<{ email: string; professionalName: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -262,8 +263,9 @@ export default function ClientDashboard() {
   }, [user?.id, selected?.id])
 
   const handlePaymentSuccess = (email: string) => {
-    // Don't close the dialog here — let the user see the success screen and copy the email.
-    // The dialog's own "Done" button will call onClose() to dismiss it.
+    const professionalName = paymentMatch?.profiles?.full_name || 'the professional'
+    setPaymentMatch(null)
+    setConnectionSuccess({ email, professionalName })
     if (selected) fetchMatches(selected.id)
     fetchOpportunities()
   }
@@ -272,7 +274,7 @@ export default function ClientDashboard() {
     <DashboardLayout title="Opportunities">
       <title>Opportunities · Matched</title>
 
-      {/* Toast */}
+      {/* Toast (for non-payment notifications) */}
       {toast && (
         <div
           style={{
@@ -304,6 +306,15 @@ export default function ClientDashboard() {
           opportunityTitle={selected?.title || ''}
           onClose={() => setPaymentMatch(null)}
           onSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {/* Payment Success Overlay */}
+      {connectionSuccess && (
+        <ConnectionSuccessOverlay
+          professionalName={connectionSuccess.professionalName}
+          email={connectionSuccess.email}
+          onDone={() => setConnectionSuccess(null)}
         />
       )}
 
@@ -751,6 +762,174 @@ function ProfessionalCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── ConnectionSuccessOverlay ─────────────────────────────────────────────────
+
+function ConnectionSuccessOverlay({
+  professionalName,
+  email,
+  onDone,
+}: {
+  professionalName: string
+  email: string
+  onDone: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.85)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9000,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          background: '#141414',
+          border: '1px solid #2a2a2a',
+          borderRadius: 24,
+          padding: 40,
+          width: '100%',
+          maxWidth: 440,
+          textAlign: 'center',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.8)',
+        }}
+      >
+        {/* Checkmark */}
+        <div
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: '50%',
+            background: 'rgba(168,255,62,0.15)',
+            border: '2px solid #A8FF3E',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 32,
+            margin: '0 auto 24px',
+            color: '#A8FF3E',
+          }}
+        >
+          ✓
+        </div>
+
+        <h2 style={{ fontSize: 24, fontWeight: 700, color: '#fff', margin: '0 0 8px' }}>
+          Payment complete!
+        </h2>
+        <p style={{ fontSize: 15, color: '#888', margin: '0 0 28px', lineHeight: 1.6 }}>
+          You're now connected with <span style={{ color: '#fff', fontWeight: 600 }}>{professionalName}</span>.
+          Reach out directly to get started.
+        </p>
+
+        {email ? (
+          <>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Their email address
+            </p>
+            <div
+              style={{
+                background: '#1a1a1a',
+                border: '1px solid #2a2a2a',
+                borderRadius: 12,
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <span style={{ flex: 1, fontSize: 15, color: '#fff', fontFamily: 'monospace', textAlign: 'left' }}>
+                {email}
+              </span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(email)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}
+                style={{
+                  background: copied ? 'rgba(168,255,62,0.15)' : '#2a2a2a',
+                  border: 'none',
+                  borderRadius: 8,
+                  color: copied ? '#A8FF3E' : '#888',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '6px 12px',
+                  transition: 'all 0.15s',
+                  flexShrink: 0,
+                }}
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+
+            <a
+              href={`mailto:${email}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                background: '#E8FF47',
+                color: '#000',
+                padding: '14px 24px',
+                borderRadius: 100,
+                fontWeight: 700,
+                fontSize: 15,
+                textDecoration: 'none',
+                marginBottom: 12,
+              }}
+            >
+              Send email →
+            </a>
+          </>
+        ) : (
+          <div
+            style={{
+              background: '#1a1a1a',
+              border: '1px solid #2a2a2a',
+              borderRadius: 12,
+              padding: '16px',
+              marginBottom: 16,
+              fontSize: 14,
+              color: '#888',
+              lineHeight: 1.6,
+            }}
+          >
+            Their contact details have been saved. You can find them in your connected matches.
+          </div>
+        )}
+
+        <button
+          onClick={onDone}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: '1px solid #2a2a2a',
+            borderRadius: 100,
+            color: '#888',
+            padding: '14px 24px',
+            fontWeight: 600,
+            fontSize: 15,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          Done
+        </button>
+      </div>
     </div>
   )
 }

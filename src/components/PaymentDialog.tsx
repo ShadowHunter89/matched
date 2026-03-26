@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { supabase } from '@/lib/supabase'
@@ -185,7 +185,6 @@ export default function PaymentDialog({
               matchId={matchId}
               clientSecret={clientSecret}
               onSuccess={onSuccess}
-              onClose={onClose}
             />
           </Elements>
         )}
@@ -199,21 +198,16 @@ export default function PaymentDialog({
 function PaymentForm({
   matchId,
   onSuccess,
-  onClose,
 }: {
   matchId: string
   clientSecret: string
   onSuccess: (email: string) => void
-  onClose: () => void
 }) {
   const stripe = useStripe()
   const elements = useElements()
 
   const [submitting, setSubmitting] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
-  const [succeeded, setSucceeded] = useState(false)
-  const [connectedEmail, setConnectedEmail] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -223,7 +217,6 @@ function PaymentForm({
     setPayError(null)
 
     try {
-      // Step 1: Confirm payment with Stripe
       const { error: paymentError } = await stripe.confirmPayment({
         elements,
         redirect: 'if_required',
@@ -237,134 +230,19 @@ function PaymentForm({
         return
       }
 
-      // Step 2: Payment succeeded — immediately call RPC to mark connected + get email
-      // This doesn't wait for the webhook, making the UX instant
+      // Payment confirmed — get email + mark match connected, then hand off to parent
       const { data: emailData, error: rpcError } = await supabase.rpc(
         'get_connected_professional_email',
         { match_id: matchId }
       )
-
       const email = (!rpcError && emailData) ? emailData : ''
-      setConnectedEmail(email || null)
-      setSucceeded(true)
-      onSuccess(email)
+      onSuccess(email)  // parent closes this dialog and shows ConnectionSuccessOverlay
 
     } catch (err: any) {
       setPayError(err.message || 'Payment failed')
     } finally {
       setSubmitting(false)
     }
-  }
-
-  if (succeeded) {
-    return (
-      <div style={{ textAlign: 'center' }}>
-        {/* Checkmark */}
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            background: 'rgba(168,255,62,0.15)',
-            border: '2px solid #A8FF3E',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 24,
-            margin: '0 auto 16px',
-            color: '#A8FF3E',
-          }}
-        >
-          ✓
-        </div>
-        <h3 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '0 0 8px' }}>
-          You're connected!
-        </h3>
-        <p style={{ fontSize: 14, color: '#888', margin: '0 0 20px' }}>
-          Reach out directly to start working together.
-        </p>
-
-        {connectedEmail && (
-          <div
-            style={{
-              background: '#1a1a1a',
-              border: '1px solid #2a2a2a',
-              borderRadius: 12,
-              padding: '12px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              marginBottom: 12,
-            }}
-          >
-            <span style={{ flex: 1, fontSize: 14, color: '#fff', fontFamily: 'monospace' }}>
-              {connectedEmail}
-            </span>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(connectedEmail)
-                setCopied(true)
-                setTimeout(() => setCopied(false), 2000)
-              }}
-              style={{
-                background: copied ? 'rgba(168,255,62,0.15)' : '#2a2a2a',
-                border: 'none',
-                borderRadius: 8,
-                color: copied ? '#A8FF3E' : '#888',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                padding: '6px 12px',
-                transition: 'all 0.15s',
-              }}
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-        )}
-
-        {connectedEmail && (
-          <a
-            href={`mailto:${connectedEmail}`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              background: '#E8FF47',
-              color: '#000',
-              padding: '12px 24px',
-              borderRadius: 100,
-              fontWeight: 600,
-              fontSize: 14,
-              textDecoration: 'none',
-              width: '100%',
-              justifyContent: 'center',
-              marginBottom: 12,
-            }}
-          >
-            Send email →
-          </a>
-        )}
-
-        <button
-          onClick={onClose}
-          style={{
-            width: '100%',
-            background: 'transparent',
-            border: '1px solid #2a2a2a',
-            borderRadius: 100,
-            color: '#888',
-            padding: '12px 24px',
-            fontWeight: 600,
-            fontSize: 14,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          Done
-        </button>
-      </div>
-    )
   }
 
   return (
