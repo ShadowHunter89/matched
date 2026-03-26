@@ -86,13 +86,20 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
-    // ── 6. Re-use existing intent if still valid ────────────────────────────
+    // ── 6. Re-use existing intent only if it already has automatic_payment_methods ──
     if (match.stripe_payment_intent_id) {
       try {
         const existing = await stripe.paymentIntents.retrieve(match.stripe_payment_intent_id);
-        if (existing.client_secret && existing.status !== "canceled") {
+        // Only reuse if it has automatic_payment_methods enabled (required by PaymentElement)
+        if (
+          existing.client_secret &&
+          existing.status !== "canceled" &&
+          existing.status !== "succeeded" &&
+          (existing as any).automatic_payment_methods?.enabled === true
+        ) {
           return ok({ clientSecret: existing.client_secret });
         }
+        // Otherwise fall through and create a fresh intent
       } catch {
         // fall through to create new
       }
@@ -136,6 +143,7 @@ serve(async (req) => {
       amount: 15000, // $150.00
       currency: "usd",
       customer: customerId,
+      automatic_payment_methods: { enabled: true }, // Required for PaymentElement
       metadata: {
         matchId,
         clientId: userId,

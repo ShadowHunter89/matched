@@ -95,6 +95,8 @@ export default function PaymentDialog({
           padding: 32,
           width: '100%',
           maxWidth: 440,
+          maxHeight: '90vh',
+          overflowY: 'auto',
           boxShadow: '0 32px 80px rgba(0,0,0,0.8)',
         }}
       >
@@ -210,20 +212,6 @@ function PaymentForm({
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const pollForConnection = useCallback(async (): Promise<boolean> => {
-    const deadline = Date.now() + 30000
-    while (Date.now() < deadline) {
-      const { data } = await supabase
-        .from('matches')
-        .select('status')
-        .eq('id', matchId)
-        .single()
-      if (data?.status === 'connected') return true
-      await new Promise((r) => setTimeout(r, 2000))
-    }
-    return false
-  }, [matchId])
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!stripe || !elements) return
@@ -232,33 +220,32 @@ function PaymentForm({
     setPayError(null)
 
     try {
+      // Step 1: Confirm payment with Stripe
       const { error: paymentError } = await stripe.confirmPayment({
         elements,
         redirect: 'if_required',
+        confirmParams: {
+          return_url: `${window.location.origin}/dashboard/client`,
+        },
       })
 
       if (paymentError) {
         setPayError(paymentError.message || 'Payment failed')
-        setSubmitting(false)
         return
       }
 
-      // Poll for webhook to process
-      const connected = await pollForConnection()
+      // Step 2: Payment succeeded — immediately call RPC to mark connected + get email
+      // This doesn't wait for the webhook, making the UX instant
+      const { data: emailData, error: rpcError } = await supabase.rpc(
+        'get_connected_professional_email',
+        { match_id: matchId }
+      )
 
-      if (connected) {
-        const { data: emailData } = await supabase.rpc('get_connected_professional_email', {
-          match_id: matchId,
-        })
-        const email = emailData || 'contact@matched.app'
-        setConnectedEmail(email)
-        setSucceeded(true)
-        onSuccess(email)
-      } else {
-        setConnectedEmail(null)
-        setSucceeded(true)
-        onSuccess('')
-      }
+      const email = (!rpcError && emailData) ? emailData : ''
+      setConnectedEmail(email || null)
+      setSucceeded(true)
+      onSuccess(email)
+
     } catch (err: any) {
       setPayError(err.message || 'Payment failed')
     } finally {

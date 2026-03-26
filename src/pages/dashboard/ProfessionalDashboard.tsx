@@ -250,7 +250,9 @@ export default function ProfessionalDashboard() {
 
       if (error) throw error
 
-      await supabase.functions.invoke('send-client-notification', { body: { matchId: selected.id } })
+      // Notification is non-fatal — don't let it block the success flow
+      supabase.functions.invoke('send-client-notification', { body: { matchId: selected.id } }).catch(() => {})
+
       showToast('Done! The client has been notified.')
       setShowAcceptInput(false)
       setAcceptMsg('')
