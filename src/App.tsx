@@ -61,31 +61,35 @@ function RequireAuth({ children, requireRole, requireOnboarding }: RequireAuthPr
     return <Navigate to="/auth" replace />
   }
 
+  // No profile at all → always go to role selection first
+  if (!profile) {
+    return <Navigate to="/role" replace />
+  }
+
   // requireRole=true means we just need *any* role set
-  if (requireRole === true && !profile?.role) {
+  if (requireRole === true && !profile.role) {
     return <Navigate to="/role" replace />
   }
 
   // requireRole='professional'|'client' means we need that *specific* role
-  if (
-    typeof requireRole === 'string' &&
-    profile?.role !== requireRole
-  ) {
-    return <Navigate to="/dashboard" replace />
+  // profile is guaranteed non-null here
+  if (typeof requireRole === 'string' && profile.role !== requireRole) {
+    // Wrong role — send to their own dashboard, not a generic /dashboard
+    const correctDash = profile.role === 'professional'
+      ? '/dashboard/professional'
+      : profile.role === 'client'
+      ? '/dashboard/client'
+      : '/role'
+    return <Navigate to={correctDash} replace />
   }
 
-  // requireOnboarding: if onboarding_complete === true, always go to dashboard
-  // Only redirect to onboarding if role is set AND onboarding_complete is explicitly false
-  if (requireOnboarding && profile) {
+  // requireOnboarding: gate dashboard routes behind completed onboarding
+  if (requireOnboarding) {
     if (profile.onboarding_complete === true) {
       // Already onboarded — allow through
-    } else if (profile.role && profile.onboarding_complete === false) {
-      const destination =
-        profile.role === 'professional'
-          ? '/onboarding/professional'
-          : '/onboarding/client'
-      return <Navigate to={destination} replace />
-    } else if (!profile.role) {
+    } else if (profile.role) {
+      return <Navigate to={`/onboarding/${profile.role}`} replace />
+    } else {
       return <Navigate to="/role" replace />
     }
   }
@@ -114,8 +118,11 @@ function AuthRoute() {
 
   if (!initialized) return null
 
-  if (user && profile?.onboarding_complete) {
-    return <Navigate to="/dashboard" replace />
+  // Already logged in — send to the right place instead of showing auth page
+  if (user) {
+    if (profile?.onboarding_complete) return <Navigate to="/dashboard" replace />
+    if (profile?.role) return <Navigate to={`/onboarding/${profile.role}`} replace />
+    return <Navigate to="/role" replace />  // Signed up but no role chosen yet
   }
 
   return (

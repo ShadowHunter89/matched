@@ -56,7 +56,14 @@ export function useAuth() {
       if (!mounted) return
 
       if (session?.user) {
-        useAuthStore.setState({ user: session.user })
+        const currentUserId = useAuthStore.getState().user?.id
+        // If a different user just signed in, wipe the stale profile immediately
+        // so route guards never see the old user's role
+        if (currentUserId !== session.user.id) {
+          useAuthStore.setState({ user: session.user, profile: null })
+        } else {
+          useAuthStore.setState({ user: session.user })
+        }
         const profile = await fetchProfileSafe(session.user.id)
         if (mounted) useAuthStore.setState({ profile, initialized: true })
       } else {

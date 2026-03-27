@@ -56,6 +56,9 @@ export default function Auth() {
       })
       if (signUpError) throw signUpError
       if (data?.user) {
+        // Set user immediately — don't wait for onAuthStateChange race
+        setUser(data.user)
+        setProfile(null)  // Clear any stale profile from previous session
         navigate('/role')
       }
     } catch (err: any) {
