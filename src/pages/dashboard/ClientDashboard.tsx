@@ -140,7 +140,7 @@ export default function ClientDashboard() {
       // Fetch match counts and all match statuses for stats
       const { data: allMatches } = await supabase
         .from('matches')
-        .select('opportunity_id, status')
+        .select('opportunity_id, status, payment_status')
         .in('opportunity_id', opps.map((o) => o.id))
 
       const countMap: Record<string, number> = {}
@@ -173,10 +173,12 @@ export default function ClientDashboard() {
         }
       }
 
-      // Compute stats
+      // Compute stats — count as connected if status=connected OR payment_status=paid
       const totalMatched = (allMatches || []).length
       const interested = (allMatches || []).filter((m) => m.status === 'accepted').length
-      const connected = (allMatches || []).filter((m) => m.status === 'connected').length
+      const connected = (allMatches || []).filter((m) =>
+        m.status === 'connected' || m.payment_status === 'paid'
+      ).length
       setStats({
         opportunities: opps.length,
         matched: totalMatched,
@@ -266,6 +268,9 @@ export default function ClientDashboard() {
     const professionalName = paymentMatch?.profiles?.full_name || 'the professional'
     setPaymentMatch(null)
     setConnectionSuccess({ email, professionalName })
+    // Optimistically bump the connected count immediately
+    setStats((prev) => ({ ...prev, connected: prev.connected + 1 }))
+    // Then refresh from DB to get accurate state
     if (selected) fetchMatches(selected.id)
     fetchOpportunities()
   }
@@ -908,7 +913,7 @@ function ConnectionSuccessOverlay({
               lineHeight: 1.6,
             }}
           >
-            Their contact details have been saved. You can find them in your connected matches.
+            ✓ Payment received. {professionalName} has been notified and will reach out to you directly. Check your email inbox.
           </div>
         )}
 
