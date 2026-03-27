@@ -109,7 +109,7 @@ export default function Profile() {
       setLoading(false)
     }
     fetch()
-  }, [user])
+  }, [user?.id])
 
   // ── Skill tag input
   const handleSkillInput = (val: string) => {

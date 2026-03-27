@@ -145,7 +145,7 @@ export default function ProfessionalDashboard() {
       .single()
     if (data) setProfProfile(data as ProfProfile)
     return data as ProfProfile | null
-  }, [user])
+  }, [user?.id])
 
   // ── Fetch matches
   const fetchMatches = useCallback(async () => {

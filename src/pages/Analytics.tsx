@@ -148,11 +148,11 @@ export default function Analytics() {
     })
 
     setLoading(false)
-  }, [user])
+  }, [user?.id])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (user?.id) fetchData()
+  }, [user?.id])
 
   // Sorted rows
   const sortedRows = [...rows].sort((a, b) => {
