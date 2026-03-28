@@ -36,6 +36,7 @@ export default function ClientOnboarding() {
   const [checkingExisting, setCheckingExisting] = useState(true)
 
   const [companyName, setCompanyName] = useState('')
+  const [companyWebsite, setCompanyWebsite] = useState('')
   const [companySize, setCompanySize] = useState('')
   const [industry, setIndustry] = useState('')
   const [about, setAbout] = useState('')
@@ -106,6 +107,7 @@ export default function ClientOnboarding() {
           {
             user_id: user.id,
             company_name: companyName.trim(),
+            company_website: companyWebsite.trim() || null,
             company_size: companySize,
             industry,
             bio: about.trim() || null,
@@ -194,6 +196,15 @@ export default function ClientOnboarding() {
                 if (fieldErrors.companyName) setFieldErrors((prev) => ({ ...prev, companyName: '' }))
               }}
               error={fieldErrors.companyName}
+            />
+
+            <Input
+              label="Company Website"
+              type="url"
+              placeholder="https://acmecorp.com"
+              value={companyWebsite}
+              onChange={(e) => setCompanyWebsite(e.target.value)}
+              hint="Optional"
             />
 
             <Select

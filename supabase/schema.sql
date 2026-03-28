@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS public.professional_profiles (
   skills               text[]  DEFAULT '{}',
   preferred_industries text[]  DEFAULT '{}',
   preferred_team_size  text,
+  is_paused            boolean NOT NULL DEFAULT false,
   embedding            vector(1536),
   created_at           timestamptz DEFAULT now(),
   updated_at           timestamptz DEFAULT now()
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS public.client_profiles (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id            uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   company_name       text,
+  company_website    text,
   company_size       text,
   industry           text,
   bio                text,
@@ -68,7 +70,7 @@ CREATE TABLE IF NOT EXISTS public.opportunities (
                          )),
   timezone_requirements  text,
   status                 text DEFAULT 'open' CHECK (status IN (
-                           'open','matching','in_progress','filled','cancelled'
+                           'open','matching','in_progress','filled','cancelled','expired'
                          )),
   embedding              vector(1536),
   created_at             timestamptz DEFAULT now(),
@@ -91,6 +93,7 @@ CREATE TABLE IF NOT EXISTS public.matches (
   declined_at              timestamptz,
   decline_reason           text,
   client_viewed            boolean DEFAULT false,
+  reminder_sent            boolean NOT NULL DEFAULT false,
   payment_status           text DEFAULT 'unpaid',
   stripe_payment_intent_id text,
   created_at               timestamptz DEFAULT now(),

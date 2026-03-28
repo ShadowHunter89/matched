@@ -25,6 +25,7 @@ interface ProfProfile {
   remote_preference: string | null
   preferred_industries: string[]
   embedding: string | null
+  is_paused: boolean
 }
 
 type TabType = 'active' | 'history'
@@ -125,6 +126,9 @@ export default function ProfessionalDashboard() {
   const [declining, setDeclining] = useState(false)
   const [showDeclineSelect, setShowDeclineSelect] = useState(false)
 
+  // Pause toggle
+  const [pauseLoading, setPauseLoading] = useState(false)
+
   // Mobile pane
   const [mobileShowDetail, setMobileShowDetail] = useState(false)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -134,6 +138,25 @@ export default function ProfessionalDashboard() {
     if (toastTimer.current) clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToast(null), 3500)
   }, [])
+
+  const handleTogglePause = async () => {
+    if (!user || !profProfile) return
+    setPauseLoading(true)
+    const newValue = !profProfile.is_paused
+    try {
+      const { error } = await supabase
+        .from('professional_profiles')
+        .update({ is_paused: newValue, updated_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+      if (error) throw error
+      setProfProfile((p) => p ? { ...p, is_paused: newValue } : p)
+      showToast(newValue ? 'Profile paused. You will not receive new matches.' : 'Profile active. You will receive matches again.')
+    } catch {
+      showToast('Could not update profile status. Please try again.')
+    } finally {
+      setPauseLoading(false)
+    }
+  }
 
   // ── Fetch professional profile
   const fetchProfProfile = useCallback(async () => {
@@ -340,6 +363,55 @@ export default function ProfessionalDashboard() {
           }}
           className="left-pane"
         >
+          {/* Pause banner */}
+          {profProfile && (
+            <div
+              style={{
+                padding: '10px 16px',
+                borderBottom: '1px solid #2a2a2a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexShrink: 0,
+                background: profProfile.is_paused ? 'rgba(255,107,107,0.06)' : 'transparent',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: profProfile.is_paused ? '#ff6b6b' : '#A8FF3E',
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontSize: 13, color: profProfile.is_paused ? '#ff6b6b' : '#888' }}>
+                  {profProfile.is_paused ? 'Profile paused' : 'Profile active'}
+                </span>
+              </div>
+              <button
+                onClick={handleTogglePause}
+                disabled={pauseLoading}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: profProfile.is_paused ? '#A8FF3E' : '#888',
+                  background: 'none',
+                  border: `1px solid ${profProfile.is_paused ? '#A8FF3E40' : '#2a2a2a'}`,
+                  borderRadius: 100,
+                  padding: '4px 12px',
+                  cursor: pauseLoading ? 'not-allowed' : 'pointer',
+                  opacity: pauseLoading ? 0.5 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {pauseLoading ? '...' : profProfile.is_paused ? 'Resume' : 'Pause'}
+              </button>
+            </div>
+          )}
+
           {/* Tabs */}
           <div
             style={{
@@ -773,14 +845,20 @@ function OpportunityDetail({
 
             {showAcceptInput && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <label style={{ fontSize: 13, color: '#888' }}>
-                  Add a personal message (optional)
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <label style={{ fontSize: 13, color: '#888' }}>
+                    Add a personal message (optional)
+                  </label>
+                  <span style={{ fontSize: 12, color: acceptMsg.length > 180 ? '#ff6b6b' : '#555' }}>
+                    {acceptMsg.length}/200
+                  </span>
+                </div>
                 <textarea
                   value={acceptMsg}
                   onChange={(e) => setAcceptMsg(e.target.value)}
                   placeholder="Introduce yourself or note why you're a great fit..."
                   rows={4}
+                  maxLength={200}
                   style={{
                     background: '#1a1a1a',
                     border: '1px solid #2a2a2a',
