@@ -10,7 +10,7 @@ type Tab = 'signin' | 'signup'
 export default function Auth() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { setUser, setProfile } = useAuthStore()
+  const { setUser, setProfile, setInitialized } = useAuthStore()
 
   const [tab, setTab] = useState<Tab>(
     (searchParams.get('tab') as Tab) === 'signup' ? 'signup' : 'signin'
@@ -56,9 +56,10 @@ export default function Auth() {
       })
       if (signUpError) throw signUpError
       if (data?.user) {
-        // Set user immediately — don't wait for onAuthStateChange race
+        // Set user + initialized immediately — don't wait for onAuthStateChange
         setUser(data.user)
-        setProfile(null)  // Clear any stale profile from previous session
+        setProfile(null)       // Clear any stale profile from previous session
+        setInitialized(true)   // RequireAuth needs this to render (not return null)
         navigate('/role')
       }
     } catch (err: any) {
