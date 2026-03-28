@@ -22,6 +22,7 @@ export interface ProfessionalProfile {
   skills: string[]
   preferred_industries: string[]
   preferred_team_size: string | null
+  is_paused: boolean
   created_at: string
   updated_at: string
 }
@@ -30,6 +31,7 @@ export interface ClientProfile {
   id: string
   user_id: string
   company_name: string | null
+  company_website: string | null
   company_size: string | null
   industry: string | null
   bio: string | null
@@ -50,7 +52,8 @@ export interface Opportunity {
   duration_weeks: number | null
   remote_option: 'remote_only' | 'hybrid' | 'onsite_only' | 'flexible' | null
   timezone_requirements: string | null
-  status: 'open' | 'matching' | 'in_progress' | 'filled' | 'cancelled'
+  client_question: string | null  // one question the client wants professionals to answer
+  status: 'open' | 'matching' | 'in_progress' | 'filled' | 'cancelled' | 'expired'
   created_at: string
   updated_at: string
   expires_at: string | null
@@ -70,6 +73,7 @@ export interface Match {
   client_viewed: boolean
   payment_status: string
   stripe_payment_intent_id: string | null
+  reminder_sent: boolean
   created_at: string
   updated_at: string
 }

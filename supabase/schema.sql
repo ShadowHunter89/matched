@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS public.opportunities (
                            'remote_only','hybrid','onsite_only','flexible'
                          )),
   timezone_requirements  text,
+  client_question        text,
   status                 text DEFAULT 'open' CHECK (status IN (
                            'open','matching','in_progress','filled','cancelled','expired'
                          )),

@@ -36,6 +36,7 @@ interface FormState {
   durationWeeks: string
   remoteOption: string
   timezoneRequirements: string
+  clientQuestion: string
 }
 
 interface FormErrors {
@@ -61,6 +62,7 @@ export default function NewOpportunity() {
     durationWeeks: '',
     remoteOption: 'flexible',
     timezoneRequirements: '',
+    clientQuestion: '',
   })
   const [errors, setErrors] = useState<FormErrors>({})
   const [skillInput, setSkillInput] = useState('')
@@ -158,6 +160,7 @@ export default function NewOpportunity() {
       if (form.hoursPerWeek) payload.hours_per_week = parseInt(form.hoursPerWeek)
       if (form.durationWeeks) payload.duration_weeks = parseInt(form.durationWeeks)
       if (form.timezoneRequirements) payload.timezone_requirements = sanitize(form.timezoneRequirements)
+      if (form.clientQuestion.trim()) payload.client_question = sanitize(form.clientQuestion).slice(0, 200)
 
       const { data: opp, error } = await supabase
         .from('opportunities')
@@ -481,6 +484,34 @@ export default function NewOpportunity() {
               placeholder="e.g. Must overlap 4+ hours with US ET"
               style={inputStyle(false)}
             />
+          </FieldGroup>
+
+          {/* One-question interview */}
+          <FieldGroup label="Ask professionals one question (optional)">
+            <div style={{ position: 'relative' }}>
+              <textarea
+                value={form.clientQuestion}
+                onChange={(e) => setField('clientQuestion', e.target.value.slice(0, 200))}
+                placeholder="e.g. What is your approach to scaling an engineering team from 5 to 50?"
+                rows={3}
+                maxLength={200}
+                style={{ ...inputStyle(false), resize: 'vertical', lineHeight: 1.6, paddingRight: 16 }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  bottom: 10,
+                  right: 12,
+                  fontSize: 11,
+                  color: form.clientQuestion.length > 170 ? '#ff6b6b' : '#555',
+                }}
+              >
+                {form.clientQuestion.length}/200
+              </span>
+            </div>
+            <p style={{ fontSize: 12, color: '#555', margin: '6px 0 0' }}>
+              Professionals must answer this before you see their response. Leave blank to skip.
+            </p>
           </FieldGroup>
 
           {/* Submit */}

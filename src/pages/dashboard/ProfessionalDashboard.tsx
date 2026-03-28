@@ -260,6 +260,11 @@ export default function ProfessionalDashboard() {
   // ── Accept handler
   const handleAccept = async () => {
     if (!selected || !user) return
+    // If the opportunity has a question, the professional must answer it
+    if (selected.opportunities?.client_question && !acceptMsg.trim()) {
+      showToast('Please answer the client\'s question before accepting.')
+      return
+    }
     setAccepting(true)
     try {
       const { error } = await supabase
@@ -845,9 +850,28 @@ function OpportunityDetail({
 
             {showAcceptInput && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* Show client question if one was set */}
+                {opp?.client_question && (
+                  <div
+                    style={{
+                      background: 'rgba(232,255,71,0.06)',
+                      border: '1px solid rgba(232,255,71,0.2)',
+                      borderRadius: 12,
+                      padding: '14px 16px',
+                    }}
+                  >
+                    <p style={{ fontSize: 11, fontWeight: 600, color: '#E8FF47', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>
+                      The client wants to know
+                    </p>
+                    <p style={{ fontSize: 14, color: '#fff', margin: 0, lineHeight: 1.6 }}>
+                      {opp.client_question}
+                    </p>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <label style={{ fontSize: 13, color: '#888' }}>
-                    Add a personal message (optional)
+                    {opp?.client_question ? 'Your answer' : 'Add a personal message (optional)'}
+                    {opp?.client_question && <span style={{ color: '#E8FF47', marginLeft: 4 }}>*</span>}
                   </label>
                   <span style={{ fontSize: 12, color: acceptMsg.length > 180 ? '#ff6b6b' : '#555' }}>
                     {acceptMsg.length}/200
@@ -856,7 +880,7 @@ function OpportunityDetail({
                 <textarea
                   value={acceptMsg}
                   onChange={(e) => setAcceptMsg(e.target.value)}
-                  placeholder="Introduce yourself or note why you're a great fit..."
+                  placeholder={opp?.client_question ? 'Answer the client\'s question...' : 'Introduce yourself or note why you\'re a great fit...'}
                   rows={4}
                   maxLength={200}
                   style={{

@@ -23,6 +23,10 @@ ALTER TABLE public.client_profiles
 ALTER TABLE public.matches
   ADD COLUMN IF NOT EXISTS reminder_sent boolean NOT NULL DEFAULT false;
 
+-- 5. One-question interview: client sets a question professionals must answer
+ALTER TABLE public.opportunities
+  ADD COLUMN IF NOT EXISTS client_question text;
+
 -- ─── Auto-expiry cron job ─────────────────────────────────────────────────────
 -- Requires pg_cron extension (enabled by default in Supabase)
 -- Runs daily at 02:00 UTC

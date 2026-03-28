@@ -625,6 +625,7 @@ function MatchedProfessionalsList({
             <ProfessionalCard
               key={m.id}
               match={m}
+              clientQuestion={opportunity.client_question ?? null}
               onConnect={() => onConnect(m)}
             />
           ))}
@@ -638,9 +639,11 @@ function MatchedProfessionalsList({
 
 function ProfessionalCard({
   match,
+  clientQuestion,
   onConnect,
 }: {
   match: MatchWithProfessional
+  clientQuestion: string | null
   onConnect: () => void
 }) {
   const prof = match.professional_profiles
@@ -656,13 +659,18 @@ function ProfessionalCard({
   const rateMax = prof?.hourly_rate_max ? Math.round(prof.hourly_rate_max / 100) : null
 
   const isConnected = match.payment_status === 'paid' || match.status === 'connected'
-  const showConnect = !isConnected && match.status !== 'declined' && match.status !== 'expired'
+  const showConnect = !isConnected && match.status === 'accepted'
+
+  // Blind matching: show first name only until payment is made
+  const displayName = isConnected
+    ? (profile?.full_name || 'Professional')
+    : (profile?.full_name?.split(' ')[0] || 'Professional')
 
   return (
     <div
       style={{
         background: '#141414',
-        border: '1px solid #2a2a2a',
+        border: `1px solid ${match.status === 'accepted' && !isConnected ? 'rgba(232,255,71,0.25)' : '#2a2a2a'}`,
         borderRadius: 16,
         padding: 24,
       }}
@@ -671,7 +679,10 @@ function ProfessionalCard({
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
             <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>
-              {profile?.full_name || 'Professional'}
+              {displayName}
+              {!isConnected && profile?.full_name && profile.full_name.includes(' ') && (
+                <span style={{ fontSize: 13, color: '#555', fontWeight: 400, marginLeft: 6 }}>· full name revealed after connecting</span>
+              )}
             </p>
             {pct !== null && (
               <span
@@ -765,6 +776,46 @@ function ProfessionalCard({
               +{extraCount} more
             </span>
           )}
+        </div>
+      )}
+
+      {/* One-question interview answer */}
+      {clientQuestion && match.professional_message && (
+        <div
+          style={{
+            marginTop: 16,
+            background: 'rgba(232,255,71,0.04)',
+            border: '1px solid rgba(232,255,71,0.15)',
+            borderRadius: 12,
+            padding: '14px 16px',
+          }}
+        >
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#E8FF47', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Their answer
+          </p>
+          <p style={{ fontSize: 12, color: '#888', margin: '0 0 8px', fontStyle: 'italic' }}>
+            "{clientQuestion}"
+          </p>
+          <p style={{ fontSize: 14, color: '#ccc', margin: 0, lineHeight: 1.6 }}>
+            {match.professional_message}
+          </p>
+        </div>
+      )}
+
+      {/* Awaiting answer notice */}
+      {clientQuestion && !match.professional_message && match.status === 'pending' && (
+        <div
+          style={{
+            marginTop: 16,
+            background: '#1a1a1a',
+            border: '1px solid #2a2a2a',
+            borderRadius: 12,
+            padding: '12px 16px',
+          }}
+        >
+          <p style={{ fontSize: 12, color: '#555', margin: 0 }}>
+            Awaiting their answer to your question…
+          </p>
         </div>
       )}
     </div>
