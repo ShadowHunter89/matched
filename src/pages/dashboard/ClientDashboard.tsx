@@ -20,11 +20,19 @@ interface ProfessionalProfile {
   hourly_rate_max: number | null
   availability_hours: number | null
   remote_preference: string | null
+  verification_status: 'none' | 'verified' | 'pro_verified' | null
+  linkedin_url: string | null
+}
+
+interface ChallengeWin {
+  vote_count: number
+  content: string
 }
 
 interface MatchWithProfessional extends Match {
   professional_profiles: ProfessionalProfile
   profiles: { full_name: string | null }
+  challengeWin?: ChallengeWin | null
 }
 
 interface OpportunityWithCounts extends Opportunity {
@@ -214,18 +222,26 @@ export default function ClientDashboard() {
 
       const profIds = matchData.map((m) => m.professional_id)
 
-      const [{ data: profData }, { data: profileData }] = await Promise.all([
+      const [{ data: profData }, { data: profileData }, { data: challengeWins }] = await Promise.all([
         supabase.from('professional_profiles').select('*').in('user_id', profIds),
         supabase.from('profiles').select('user_id, full_name').in('user_id', profIds),
+        supabase
+          .from('challenge_submissions')
+          .select('user_id, vote_count, content, is_winner')
+          .in('user_id', profIds)
+          .eq('is_winner', true)
+          .order('vote_count', { ascending: false }),
       ])
 
       const profMap = Object.fromEntries((profData || []).map((p) => [p.user_id, p]))
       const profileMap = Object.fromEntries((profileData || []).map((p) => [p.user_id, p]))
+      const winsMap = Object.fromEntries((challengeWins || []).map((w) => [w.user_id, w]))
 
       const combined = matchData.map((m) => ({
         ...m,
         professional_profiles: profMap[m.professional_id] || null,
         profiles: profileMap[m.professional_id] || null,
+        challengeWin: winsMap[m.professional_id] || null,
       }))
 
       setMatches(combined as MatchWithProfessional[])
@@ -680,6 +696,15 @@ function ProfessionalCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
             <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>
               {displayName}
+              {prof?.verification_status === 'verified' && (
+                <span style={{ color: '#60a5fa', fontSize: 13, marginLeft: 4 }}>✓</span>
+              )}
+              {prof?.verification_status === 'pro_verified' && (
+                <span style={{ color: '#E8FF47', fontSize: 13, marginLeft: 4 }}>✓✓</span>
+              )}
+              {match.challengeWin && (
+                <span style={{ marginLeft: 4 }}>🏆</span>
+              )}
               {!isConnected && profile?.full_name && profile.full_name.includes(' ') && (
                 <span style={{ fontSize: 13, color: '#555', fontWeight: 400, marginLeft: 6 }}>· full name revealed after connecting</span>
               )}
@@ -776,6 +801,26 @@ function ProfessionalCard({
               +{extraCount} more
             </span>
           )}
+        </div>
+      )}
+
+      {/* Challenge win highlight */}
+      {match.challengeWin && (
+        <div
+          style={{
+            marginTop: 14,
+            background: 'rgba(232,255,71,0.03)',
+            border: '1px solid rgba(232,255,71,0.15)',
+            borderRadius: 12,
+            padding: '12px 16px',
+          }}
+        >
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#E8FF47', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            🏆 Challenge Winner · {match.challengeWin.vote_count} votes
+          </p>
+          <p style={{ fontSize: 13, color: '#888', margin: 0, lineHeight: 1.6, fontStyle: 'italic' }}>
+            "{match.challengeWin.content.slice(0, 120)}{match.challengeWin.content.length > 120 ? '…' : ''}"
+          </p>
         </div>
       )}
 

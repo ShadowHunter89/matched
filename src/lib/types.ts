@@ -23,6 +23,8 @@ export interface ProfessionalProfile {
   preferred_industries: string[]
   preferred_team_size: string | null
   is_paused: boolean
+  verification_status: 'none' | 'verified' | 'pro_verified'
+  linkedin_url: string | null
   created_at: string
   updated_at: string
 }

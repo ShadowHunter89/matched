@@ -10,7 +10,6 @@ import type {
   NetworkAnswerEnriched,
   AvailabilityPostEnriched,
   Challenge,
-  ChallengeSubmissionEnriched,
 } from '@/lib/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -996,90 +995,39 @@ function AvailCard({ post }: { post: AvailabilityPostEnriched }) {
 function ChallengesTab({ isProfessional }: { isProfessional: boolean }) {
   const { user } = useAuthStore()
   const [challenge, setChallenge] = useState<Challenge | null>(null)
-  const [submissions, setSubmissions] = useState<ChallengeSubmissionEnriched[]>([])
   const [loading, setLoading] = useState(true)
-  const [submitText, setSubmitText] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [showSubmitForm, setShowSubmitForm] = useState(false)
+  const [mySubmission, setMySubmission] = useState<boolean>(false)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    const { data: challenges } = await supabase
-      .from('challenges')
-      .select('*')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1)
+  useEffect(() => {
+    const fetchChallenge = async () => {
+      setLoading(true)
+      const { data: challenges } = await supabase
+        .from('challenges')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
 
-    if (!challenges || challenges.length === 0) { setLoading(false); return }
-    const ch = challenges[0] as Challenge
-    setChallenge(ch)
+      if (!challenges || challenges.length === 0) {
+        setLoading(false)
+        return
+      }
+      const ch = challenges[0] as Challenge
+      setChallenge(ch)
 
-    const { data: rawSubs } = await supabase
-      .from('challenge_submissions')
-      .select('*')
-      .eq('challenge_id', ch.id)
-      .order('vote_count', { ascending: false })
-
-    if (!rawSubs || rawSubs.length === 0) { setSubmissions([]); setLoading(false); return }
-
-    const userIds = [...new Set(rawSubs.map((s) => s.user_id))]
-    const [{ data: profiles }, { data: profProfiles }, { data: myVotes }] = await Promise.all([
-      supabase.from('profiles').select('user_id, full_name').in('user_id', userIds),
-      supabase.from('professional_profiles').select('user_id, headline').in('user_id', userIds),
-      user ? supabase.from('challenge_votes').select('submission_id').eq('user_id', user.id) : Promise.resolve({ data: [] }),
-    ])
-
-    const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]))
-    const profMap = Object.fromEntries((profProfiles || []).map((p) => [p.user_id, p]))
-    const votedSet = new Set((myVotes || []).map((v: { submission_id: string }) => v.submission_id))
-
-    setSubmissions(rawSubs.map((s, i) => ({
-      ...s,
-      authorName: profileMap[s.user_id]?.full_name ?? null,
-      authorHeadline: profMap[s.user_id]?.headline ?? null,
-      isVoted: votedSet.has(s.id),
-      isOwn: s.user_id === user?.id,
-      is_featured: i < 3,
-    })))
-    setLoading(false)
+      if (user) {
+        const { data: mySub } = await supabase
+          .from('challenge_submissions')
+          .select('id')
+          .eq('challenge_id', ch.id)
+          .eq('user_id', user.id)
+          .limit(1)
+        setMySubmission(!!(mySub && mySub.length > 0))
+      }
+      setLoading(false)
+    }
+    fetchChallenge()
   }, [user])
-
-  useEffect(() => { fetchData() }, [fetchData])
-
-  const handleVote = async (submissionId: string) => {
-    if (!user) return
-    const sub = submissions.find((s) => s.id === submissionId)
-    if (!sub || sub.isOwn) return
-    const wasVoted = sub.isVoted
-    setSubmissions((prev) => prev.map((s) =>
-      s.id === submissionId ? { ...s, vote_count: wasVoted ? s.vote_count - 1 : s.vote_count + 1, isVoted: !wasVoted } : s
-    ))
-    const { error } = await supabase.rpc('toggle_challenge_vote', { p_submission_id: submissionId })
-    if (error) {
-      setSubmissions((prev) => prev.map((s) =>
-        s.id === submissionId ? { ...s, vote_count: wasVoted ? s.vote_count + 1 : s.vote_count - 1, isVoted: wasVoted } : s
-      ))
-    }
-  }
-
-  const handleSubmit = async () => {
-    if (!user || !challenge || submitText.trim().length < 50) return
-    setSubmitting(true)
-    const { error } = await supabase.from('challenge_submissions').insert({
-      challenge_id: challenge.id,
-      user_id: user.id,
-      content: submitText.trim(),
-    })
-    if (!error) {
-      setSubmitText('')
-      setShowSubmitForm(false)
-      fetchData()
-    }
-    setSubmitting(false)
-  }
-
-  const alreadySubmitted = user ? submissions.some((s) => s.user_id === user.id) : false
 
   if (loading) return <LoadingSkeleton />
 
@@ -1094,200 +1042,48 @@ function ChallengesTab({ isProfessional }: { isProfessional: boolean }) {
   const remaining = daysLeft(challenge.ends_at)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Challenge brief */}
-      <div style={{ ...card, border: '1px solid rgba(232,255,71,0.15)', background: 'rgba(232,255,71,0.03)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#E8FF47', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              {challenge.category ? `${challenge.category} · ` : ''}Monthly Challenge
-            </span>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: '6px 0 0' }}>{challenge.title}</h2>
-          </div>
-          {remaining && (
-            <span style={{ fontSize: 12, color: '#888', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 100, padding: '5px 12px', flexShrink: 0, whiteSpace: 'nowrap' }}>
-              {remaining}
-            </span>
-          )}
+    <div style={{ ...card, border: '1px solid rgba(232,255,71,0.15)', background: 'rgba(232,255,71,0.02)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#E8FF47', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            {challenge.category ? `${challenge.category} · ` : ''}Active Challenge
+          </span>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: '6px 0 8px' }}>{challenge.title}</h2>
+          <p style={{ fontSize: 14, color: '#888', lineHeight: 1.6, margin: 0 }}>
+            {challenge.description.slice(0, 200)}{challenge.description.length > 200 ? '…' : ''}
+          </p>
         </div>
-        <p style={{ fontSize: 14, color: '#ccc', lineHeight: 1.7, margin: '0 0 20px' }}>{challenge.description}</p>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, color: '#555' }}>Top 3 get a <strong style={{ color: '#E8FF47' }}>Featured</strong> badge on their profile for 30 days.</span>
-        </div>
+        {remaining && (
+          <span style={{ fontSize: 12, color: '#888', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 100, padding: '5px 12px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            {remaining}
+          </span>
+        )}
       </div>
 
-      {/* Submission form */}
-      {isProfessional && !alreadySubmitted && (
-        <div>
-          {!showSubmitForm ? (
-            <button
-              onClick={() => setShowSubmitForm(true)}
-              style={{
-                ...card,
-                background: 'rgba(232,255,71,0.04)',
-                border: '1px dashed rgba(232,255,71,0.2)',
-                cursor: 'pointer',
-                textAlign: 'left',
-                color: '#888',
-                fontSize: 14,
-                fontFamily: 'inherit',
-                width: '100%',
-              }}
-            >
-              + Submit your answer to this challenge
-            </button>
-          ) : (
-            <div style={{ ...card, border: '1px solid rgba(232,255,71,0.2)' }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#E8FF47', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>
-                Your submission
-              </p>
-              <textarea
-                value={submitText}
-                onChange={(e) => setSubmitText(e.target.value.slice(0, 1500))}
-                placeholder="Write a thorough, specific answer. Generic advice won't stand out."
-                rows={8}
-                style={textarea}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                <span style={{ fontSize: 11, color: submitText.length > 1300 ? '#ff6b6b' : '#555' }}>{submitText.length}/1500</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Button variant="ghost" onClick={() => setShowSubmitForm(false)}>Cancel</Button>
-                  <Button variant="primary" onClick={handleSubmit} disabled={submitting || submitText.trim().length < 50}>
-                    {submitting ? 'Submitting…' : 'Submit'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      {isProfessional && mySubmission && (
+        <p style={{ fontSize: 13, color: '#A8FF3E', margin: '0 0 14px' }}>
+          You've already submitted an answer.
+        </p>
       )}
 
-      {isProfessional && alreadySubmitted && (
-        <div style={{ ...card, background: 'rgba(168,255,62,0.04)', border: '1px solid rgba(168,255,62,0.2)', textAlign: 'center' }}>
-          <p style={{ color: '#A8FF3E', fontWeight: 600, fontSize: 14, margin: 0 }}>
-            You've submitted an answer. Vote on others below to support the community.
-          </p>
-        </div>
-      )}
-
-      {/* Leaderboard */}
-      {submissions.length > 0 && (
-        <div>
-          <p style={{ fontSize: 12, fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>
-            {submissions.length} submission{submissions.length !== 1 ? 's' : ''} · vote for the best
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {submissions.map((sub, idx) => (
-              <SubmissionCard key={sub.id} sub={sub} rank={idx + 1} onVote={handleVote} />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SubmissionCard({
-  sub,
-  rank,
-  onVote,
-}: {
-  sub: ChallengeSubmissionEnriched
-  rank: number
-  onVote: (id: string) => void
-}) {
-  const [expanded, setExpanded] = useState(rank <= 2)
-  const isFeatured = rank <= 3
-
-  return (
-    <div
-      style={{
-        ...card,
-        border: isFeatured
-          ? `1px solid rgba(232,255,71,${rank === 1 ? '0.4' : rank === 2 ? '0.25' : '0.15'})`
-          : '1px solid #2a2a2a',
-      }}
-    >
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-        {/* Rank */}
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: '50%',
-            background: rank <= 3 ? 'rgba(232,255,71,0.12)' : '#1a1a1a',
-            border: `1px solid ${rank <= 3 ? 'rgba(232,255,71,0.3)' : '#2a2a2a'}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 13,
-            fontWeight: 700,
-            color: rank <= 3 ? '#E8FF47' : '#555',
-            flexShrink: 0,
-          }}
-        >
-          {rank}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <div>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#fff', margin: '0 0 2px' }}>
-                {sub.authorName || 'Anonymous'}
-                {isFeatured && !sub.isOwn && (
-                  <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: '#E8FF47', background: 'rgba(232,255,71,0.12)', border: '1px solid rgba(232,255,71,0.25)', borderRadius: 100, padding: '2px 8px' }}>
-                    Featured
-                  </span>
-                )}
-              </p>
-              {sub.authorHeadline && <p style={{ fontSize: 11, color: '#888', margin: 0 }}>{sub.authorHeadline}</p>}
-            </div>
-            <span style={{ fontSize: 11, color: '#555', flexShrink: 0, marginLeft: 8 }}>{timeAgo(sub.created_at)}</span>
-          </div>
-
-          <p
-            style={{
-              fontSize: 14,
-              color: '#ccc',
-              lineHeight: 1.7,
-              margin: '0 0 12px',
-              display: expanded ? undefined : '-webkit-box',
-              WebkitLineClamp: expanded ? undefined : 3,
-              WebkitBoxOrient: expanded ? undefined : 'vertical',
-              overflow: expanded ? undefined : 'hidden',
-            }}
-          >
-            {sub.content}
-          </p>
-          {sub.content.length > 200 && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              style={{ background: 'none', border: 'none', color: '#E8FF47', fontSize: 12, cursor: 'pointer', padding: '0 0 10px', fontFamily: 'inherit' }}
-            >
-              {expanded ? 'Show less' : 'Read more'}
-            </button>
-          )}
-
-          <button
-            onClick={() => !sub.isOwn && onVote(sub.id)}
-            disabled={sub.isOwn}
-            style={{
-              background: sub.isVoted ? 'rgba(232,255,71,0.1)' : 'transparent',
-              border: `1px solid ${sub.isVoted ? 'rgba(232,255,71,0.3)' : '#2a2a2a'}`,
-              borderRadius: 100,
-              color: sub.isOwn ? '#333' : sub.isVoted ? '#E8FF47' : '#555',
-              fontSize: 12,
-              fontWeight: 600,
-              padding: '5px 14px',
-              cursor: sub.isOwn ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              transition: 'all 0.15s',
-            }}
-          >
-            ▲ {sub.vote_count} {sub.isOwn ? '(yours)' : ''}
-          </button>
-        </div>
-      </div>
+      <Link
+        to="/challenges"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          background: '#E8FF47',
+          color: '#000',
+          fontWeight: 700,
+          fontSize: 13,
+          padding: '10px 20px',
+          borderRadius: 100,
+          textDecoration: 'none',
+          transition: 'opacity 0.15s',
+        }}
+      >
+        {isProfessional && !mySubmission ? 'View challenge & submit →' : 'View challenge & submissions →'}
+      </Link>
     </div>
   )
 }

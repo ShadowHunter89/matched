@@ -19,6 +19,7 @@ const AdminDiagnostics = React.lazy(() => import('@/pages/AdminDiagnostics'))
 const AdminValidation = React.lazy(() => import('@/pages/admin/Validation'))
 const NetworkHub = React.lazy(() => import('@/pages/network/NetworkHub'))
 const RatesIndex = React.lazy(() => import('@/pages/rates/RatesIndex'))
+const Challenges = React.lazy(() => import('@/pages/Challenges'))
 
 // ─── Loading fallback ────────────────────────────────────────────────────────
 
@@ -250,6 +251,9 @@ export default function App() {
 
         {/* Rates Index — public, no auth required */}
         <Route path="/rates" element={<RatesIndex />} />
+
+        {/* Challenges — public, no auth required to view */}
+        <Route path="/challenges" element={<Challenges />} />
 
         {/* Admin */}
         <Route
