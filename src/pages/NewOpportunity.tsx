@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Button from '@/components/ui/Button'
+import OpportunityIntelligenceModal from '@/components/OpportunityIntelligenceModal'
+import type { Opportunity } from '@/lib/types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,6 +72,7 @@ export default function NewOpportunity() {
   const [submitting, setSubmitting] = useState(false)
   const [matching, setMatching] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [intelligenceOpp, setIntelligenceOpp] = useState<Opportunity | null>(null)
 
   const setField = (key: keyof FormState, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -174,21 +177,8 @@ export default function NewOpportunity() {
       }
 
       setSubmitting(false)
-      setMatching(true)
-
-      const { error: matchError } = await supabase
-        .functions.invoke('match-professionals', {
-          body: { opportunityId: opp.id },
-        })
-
-      setMatching(false)
-      setToast(matchError
-        ? 'Opportunity posted! Processing matches...'
-        : 'Opportunity posted! Matching professionals now...')
-
-      setTimeout(() => {
-        navigate('/dashboard/client', { state: { selectedOppId: opp.id } })
-      }, 800)
+      // Show intelligence report before running matching
+      setIntelligenceOpp(opp as Opportunity)
     } catch (err: unknown) {
       console.error('Failed to post opportunity:', err)
       setSubmitting(false)
@@ -197,9 +187,37 @@ export default function NewOpportunity() {
     }
   }
 
+  const handleProceedFromIntelligence = async () => {
+    if (!intelligenceOpp) return
+    const oppId = intelligenceOpp.id
+    setIntelligenceOpp(null)
+    setMatching(true)
+
+    const { error: matchError } = await supabase.functions.invoke('match-professionals', {
+      body: { opportunityId: oppId },
+    })
+
+    setMatching(false)
+    setToast(matchError
+      ? 'Opportunity posted! Processing matches...'
+      : 'Opportunity posted! Matching professionals now...')
+
+    setTimeout(() => {
+      navigate('/dashboard/client', { state: { selectedOppId: oppId } })
+    }, 800)
+  }
+
   return (
     <DashboardLayout title="Post Opportunity">
       <title>Post Opportunity · Matched</title>
+
+      {/* Opportunity Intelligence Report */}
+      {intelligenceOpp && (
+        <OpportunityIntelligenceModal
+          opportunity={intelligenceOpp}
+          onProceed={handleProceedFromIntelligence}
+        />
+      )}
 
       {/* Matching overlay */}
       {matching && (

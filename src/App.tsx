@@ -17,6 +17,8 @@ const Analytics = React.lazy(() => import('@/pages/Analytics'))
 const Seed = React.lazy(() => import('@/pages/admin/Seed'))
 const AdminDiagnostics = React.lazy(() => import('@/pages/AdminDiagnostics'))
 const AdminValidation = React.lazy(() => import('@/pages/admin/Validation'))
+const NetworkHub = React.lazy(() => import('@/pages/network/NetworkHub'))
+const RatesIndex = React.lazy(() => import('@/pages/rates/RatesIndex'))
 
 // ─── Loading fallback ────────────────────────────────────────────────────────
 
@@ -235,6 +237,19 @@ export default function App() {
             </RequireAuth>
           }
         />
+
+        {/* The Network — accessible to any onboarded user */}
+        <Route
+          path="/network"
+          element={
+            <RequireAuth requireOnboarding>
+              <NetworkHub />
+            </RequireAuth>
+          }
+        />
+
+        {/* Rates Index — public, no auth required */}
+        <Route path="/rates" element={<RatesIndex />} />
 
         {/* Admin */}
         <Route

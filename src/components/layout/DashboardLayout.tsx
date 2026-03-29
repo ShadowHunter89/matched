@@ -9,6 +9,7 @@ import {
   Menu,
   X,
   Dot,
+  Globe,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -28,12 +29,14 @@ interface DashboardLayoutProps {
 
 const PROFESSIONAL_NAV: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard/professional', icon: <LayoutDashboard size={18} />, badgeKey: 'pendingMatches' },
+  { label: 'The Network', href: '/network', icon: <Globe size={18} /> },
   { label: 'Edit Profile', href: '/profile', icon: <User size={18} /> },
 ]
 
 const CLIENT_NAV: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard/client', icon: <LayoutDashboard size={18} />, badgeKey: 'acceptedUnpaidMatches' },
   { label: 'Post Opportunity', href: '/opportunities/new', icon: <Plus size={18} /> },
+  { label: 'The Network', href: '/network', icon: <Globe size={18} /> },
   { label: 'Analytics', href: '/analytics', icon: <BarChart2 size={18} /> },
 ]
 
